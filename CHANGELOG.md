@@ -1,5 +1,22 @@
 # Änderungen
 
+## 1.3 – 23.11.2026
+
+Zwei neue Abschnitte, beide aus Messungen.
+
+- **Spotseite: „Wie gut lag die Vorhersage hier?“** Die Vorhersage vom Vortag für die nächste Messstation des Reviers
+  (bis 40 km, ohne nicht repräsentative Stationen) gegen die Messung dort: Streifen der letzten 30 Tage (angesagt und
+  gekommen / angesagt, kam nicht / kam unangesagt / richtig ruhig), Satz mit den Zahlen, dazu die Quote für 2–3 Tage
+  vorher. `treffer.json` enthält dafür je Station und Gleitgrenze die Tage (`je_station`); eine ältere Datei wird
+  beim nächsten Lauf neu gerechnet
+- **Revierseite, Saison: „Gemessen an den Stationen“** – neu `--klima-messung`: Ø Gleitwindtage je Monat an jeder
+  Station über volle Kalenderjahre (Standard 5, `--jahre N`), DWD/Bright Sky, MeteoSwiss, DMI, KNMI (mit Schlüssel),
+  GeoSphere-Klimadatensatz; an Walensee/Achensee zusätzlich Talwind ab 5/8 kn (12–18 Uhr, ≥ 3 h aus der
+  Thermikrichtung). An der Küste Seewind ab 5 kn je Monat aus `--thermik-pruefen` (jetzt mit Monatswerten je
+  Station). Thermikseen zeigen damit erstmals eine Saison. Ergebnis `klima_messung.json`, Rohdaten
+  `klima_messung_cache/`, keine Open-Meteo-Abrufe. Meteotrentino bleibt außen vor (Lizenz der Historie ungeklärt)
+- `--jahre` ohne Angabe: 2 Jahre wie bisher, bei `--klima-messung` 5
+
 ## 1.2.1 – 23.11.2026
 
 - Thermik-Index wird nach der Treffsicherheit bei ≥ 8 / ≥ 12 kn ein- oder ausgeblendet, nicht mehr nach der besten
