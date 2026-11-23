@@ -376,7 +376,7 @@ OEFFENTLICH_TITEL = "Windfenster"           # Name seit 01.11.2026 (David)
 MARKE = "Windfenster"
 # Versionsnummer (23.11.2026, Stand des Livegangs + Umbau = 1.0). Kleine Korrekturen 1.0.1, neue Funktionen 1.1,
 # große Umbauten 2.0. Jede Version steht in CHANGELOG.md und als Git-Tag (vX.Y[.Z]).
-VERSION = "1.1.2"
+VERSION = "1.2"
 MARKE_UNTERTITEL = "Windvorhersage für Windsurfen, Kiten & Wingen"
 MARKE_LOGO = ('<svg viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><defs><linearGradient id="wf-g" '
               'x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5fd0ea"/><stop offset="1" stop-color="#1d5fc4"/>'
@@ -6472,17 +6472,20 @@ def direkt_feld(m: str) -> Optional[dict]:
 # späten Nachmittag, wenn das Land mehrere Grad wärmer wird als das Wasser, die Sonne scheint und der Grundwind
 # schwach ist. Ablandiger Grundwind über ~8 kn verhindert ihn. Die Modelle bilden ihn oft nur abgeschwächt ab.
 
-SEEWIND_DT_MOEGLICH = 5.0      # K: Land (Tageshöchstwert) minus Wasser
-SEEWIND_DT_WAHRSCH = 8.0
+# 1.2 (23.11.2026) nach --thermik-pruefen an 4 Küstenstationen, 2 Saisons: Die Regel trifft nur SCHWACHEN Seewind
+# (≥ 5 kn an Regel-Tagen 33 % statt 17 %, ≥ 8 kn 12 % statt 8 %, ≥ 12 kn praktisch nie). Signal ist Sonne + schwacher
+# Grundwind; ein Temperaturunterschied über ~3 K bringt nichts, ab 8 K (kaltes Frühjahrswasser, stabile Schichtung über
+# See) wird es seltener. Daher: Fenster 2–8 K, nur noch „möglich, meist schwach“, kein „wahrscheinlich“.
+SEEWIND_DT_MOEGLICH = 2.0      # K: Land (Tageshöchstwert) minus Wasser
+SEEWIND_DT_MAX = 8.0           # K: darüber kein Hinweis
 SEEWIND_GRUND_MAX = 10.0       # kn Grundwind am Vormittag (08–10 Uhr)
-# Thermik-Verstärkung (29.10.2026): auflandiger Grundwind (z. B. Ost an der Eckernförder Bucht) plus sonniger Tag mit
-# warmem Land über kaltem Wasser – die Seewindzirkulation legt sich auf den Grundwind, am Nachmittag oft ein paar
-# Knoten mehr, als die Modelle zeigen (vor allem Frühjahr/Frühsommer). Prüfung an Messungen: --thermik-pruefen (1.1).
+# „Thermik verstärkt“ (auflandiger Grundwind 6–16 kn + Sonne) entfällt seit 1.2: gemessen nur +0,5 kn gegenüber anderen
+# auflandigen Tagen. Der Bereich bleibt für die Prüfung (Diagnose) und um solche Tage aus dem Seewind herauszuhalten.
 SEEWIND_VERST_GRUND = (6.0, 16.0)   # kn: Bereich des auflandigen Grundwinds
 SEEWIND_REVIERE = ("ostsee", "westkueste")   # die Faustregeln stammen von der Kieler Bucht
 # Die Faustregel selbst – --thermik-pruefen vergleicht immer gegen sie; thermik_pruefung.json kann die drei Werte
 # oben beim Start ersetzen (thermik_pruefung_laden), wenn die Prüfung an Messungen klar besser abschneidet.
-SEEWIND_STANDARD = (SEEWIND_DT_MOEGLICH, SEEWIND_DT_WAHRSCH, SEEWIND_GRUND_MAX)
+SEEWIND_STANDARD = (SEEWIND_DT_MOEGLICH, SEEWIND_DT_MAX, SEEWIND_GRUND_MAX)
 SEEWIND: Dict[Tuple[date, str], dict] = {}     # (Tag, Spot) → Bewertung
 SEEWIND_TAG: Dict[date, dict] = {}             # Tag → Landtemperatur, Wasser, Spots
 
@@ -6495,7 +6498,7 @@ def seewind_bewerten(spot: "Spot", d: "OrtDaten", tag: date, t_land: Optional[fl
         return None
     sst = sum(wt) / len(wt)
     dt = t_land - sst
-    if dt < SEEWIND_DT_MOEGLICH:
+    if dt < SEEWIND_DT_MOEGLICH or dt >= SEEWIND_DT_MAX:
         return None
     hs = [st for st in d.stunden if st.t.date() == tag]
     morgen = [st for st in hs if 8 <= st.t.hour <= 10]
@@ -6507,19 +6510,14 @@ def seewind_bewerten(spot: "Spot", d: "OrtDaten", tag: date, t_land: Optional[fl
         return None                                   # zu wolkig/regnerisch
     g_ws, g_wd = vektor_mittel([(st.ws, st.wd) for st in morgen])
     lage = lage_zum_strand(spot, g_wd)
-    if lage == "auflandig" and SEEWIND_VERST_GRUND[0] <= g_ws <= SEEWIND_VERST_GRUND[1]:
-        # Grundwind kommt schon von See: kein eigener Seewind, aber Verstärkung am Nachmittag
-        auf = [st for st in nachm if abs((st.wd - spot.strand + 180) % 360 - 180) <= 60]
-        m_kn = max((st.ws for st in auf), default=None)
-        return {"art": "verstaerkt", "stufe": 2 if dt >= SEEWIND_DT_WAHRSCH else 1, "dt": dt, "land": t_land,
-                "wasser": sst, "grund": g_ws, "grund_rich": kompass(g_wd), "von": kompass(spot.strand),
-                "modell_kn": m_kn if (m_kn is not None and m_kn >= g_ws + 2) else None}
+    if lage == "auflandig" and g_ws >= SEEWIND_VERST_GRUND[0]:
+        return None                                   # weht schon von See – kein eigener Seewind
     if g_ws > SEEWIND_GRUND_MAX:
         return None
     ablandig = lage_zum_strand(spot, g_wd) == "ablandig"
     if ablandig and g_ws > 8:
         return None
-    stufe = 2 if (dt >= SEEWIND_DT_WAHRSCH and g_ws <= 8 and not ablandig) else 1
+    stufe = 1                                         # „wahrscheinlich“ gibt es seit 1.2 nicht mehr
     # Sehen die Modelle ihn? Nachmittags auflandig und stärker als am Vormittag
     auf = [st for st in nachm if abs((st.wd - spot.strand + 180) % 360 - 180) <= 60]
     m_kn = max((st.ws for st in auf), default=None)
@@ -6577,10 +6575,9 @@ def seewind_tag_text(tag: date, rid: Optional[str] = None) -> str:
         sehen = [n for n, b in sp if b["modell_kn"]]
         namen = ", ".join(n for n, _ in sorted(sp, key=lambda x: -x[1]["stufe"])[:4])
         if art == "seewind":
-            teile.append(f"Seewind {'wahrscheinlich' if stufe == 2 else 'möglich'} (Land {sp[0][1]['land']:.0f} °C, "
+            teile.append(f"Seewind möglich, meist schwach (Land {sp[0][1]['land']:.0f} °C, "
                          f"Wasser {wasser:.0f} °C, ab ~12 Uhr): {namen}"
-                         + (" – Modelle sehen ihn" if sehen else (" – in den Modellen kaum, kann stärker kommen"
-                                                                   if seewind_mehr_belegt() else " – in den Modellen kaum")))
+                         + (" – Modelle sehen ihn" if sehen else " – in den Modellen kaum"))
         else:
             teile.append(f"Thermik verstärkt den auflandigen Wind {'deutlich' if stufe == 2 else 'etwas'} "
                          f"(Land {sp[0][1]['land']:.0f} °C, Wasser {wasser:.0f} °C, nachmittags): {namen}"
@@ -6596,7 +6593,7 @@ def seewind_spot_text(b: dict) -> str:
                    (", in den Modellen kaum – eher mehr" if seewind_mehr_belegt() else ", in den Modellen kaum"))
                 + seewind_verst_text())
     q = seewind_quote_text(b["stufe"])
-    return (f"Seewind {'wahrscheinlich' if b['stufe'] == 2 else 'möglich'} aus {b['von']} ab ~12 Uhr "
+    return (f"Seewind möglich, meist schwach, aus {b['von']} ab ~12 Uhr "
             f"(Land {b['land']:.0f} °C, Wasser {b['wasser']:.0f} °C, Grundwind {b['grund']:.0f} kn {b['grund_rich']})"
             + (f", Modelle bis {b['modell_kn']:.0f} kn" if b["modell_kn"] else ", in den Modellen kaum")
             + (f" · {q}" if q else ""))
@@ -7932,6 +7929,8 @@ EN: Dict[str, str] = {
     "Thermik sehen die Modelle kaum – keine Modell-Saison.": "Models hardly see thermals – no model season.",
     "Die Modelle sehen den thermischen Wind kaum – keine Modell-Saison. Mehr auf der Revierseite.":
         "The models hardly see the thermal wind – no model season. More on the area page.",
+    "Thermik-Revier – die Modelle sehen den Thermikwind kaum, deshalb keine Saison-Statistik.":
+        "Thermal spot area – the models hardly see the thermal wind, so no season statistics.",
     "Thermik-Revier – die Modelle sehen Ora und Pelèr kaum, deshalb keine Saison-Statistik.":
         "Thermal area – the models hardly see Ora and Pelèr, so no season statistics.",
     "☀ Thermik +": "☀ thermal +", "☀ Seewind": "☀ sea breeze", "Thermik verstärkt": "thermal boost",
@@ -8201,6 +8200,8 @@ EN: Dict[str, str] = {
     "Seewind und Thermik sind rückwirkend an Messungen geprüft: dieselbe Regel, gefüttert mit den damaligen Modellvorhersagen, gegen die gemessenen Nachmittage an Uferstationen (Kiel-Holtenau, Schönhagen, Fehmarn, St. Peter-Ording; Quinten am Walensee, Achenkirch am Achensee). Wo das klar besser passte, gelten die geprüften Schwellen; dazu steht, wie oft der Wind an solchen Tagen wirklich kam. Gardasee: keine frei verfügbare Messhistorie, dort bleibt die Faustregel.":
         "Sea breeze and thermals have been checked retrospectively against measurements: the same rule, fed with the model forecasts of the time, against the measured afternoons at shore stations (Kiel-Holtenau, Schönhagen, Fehmarn, St. Peter-Ording; Quinten on Walensee, Achenkirch on Achensee). Where that clearly fitted better, the checked thresholds apply, together with how often the wind actually came on such days. Lake Garda: no freely available measurement history, so the rule of thumb stays.",
     "deutlich": "markedly", "etwas": "slightly",
+    "Ergebnis Seewind: An diesen Küsten kommt er meist nur schwach (an Land §–§ kn), gleitbar fast nie. Der Hinweis lautet deshalb „Seewind möglich, meist schwach“ und erscheint nur bei Sonne, schwachem Grundwind und §–§ K Unterschied zwischen Land und Wasser; „Thermik verstärkt“ entfällt (gemessen kaum ein halber Knoten).":
+        "Sea breeze result: on these coasts it is mostly light (§–§ kn on land) and almost never enough for planing. The hint therefore reads “sea breeze possible, mostly light” and only appears with sunshine, weak background wind and a land–water difference of §–§ K; “thermal boost” is gone (measured: barely half a knot).",
     "Seewind und Thermik sind Faustregeln, noch nicht an Messungen geprüft.":
         "Sea breeze and thermals are rules of thumb, not yet checked against measurements.",
     "Seewind-Index": "Sea breeze index", "Grenzen – ehrlich": "Limits – honestly",
@@ -8455,6 +8456,17 @@ EN_MUSTER.extend((re.compile(rx), z) for rx, z in [
     (r"^Thermik verstärkt den auflandigen Wind (deutlich|etwas) \(Land § °C, Wasser § °C, nachmittags\): (.+)$",
      "thermals boost the onshore wind {} (land § °C, water § °C, afternoon): {}"),
     (r"^geprüft §–§: kam an § % solcher Tage$", "checked §–§: came on § % of such days"),
+    (r"^geprüft §–§: ≥ § kn an § % solcher Tage, ≥ § kn an § %$", "checked §–§: ≥ § kn on § % of such days, ≥ § kn on § %"),
+    (r"^Seewind möglich, meist schwach, aus § ab ~§ Uhr \(Land § °C, Wasser § °C, Grundwind § kn §\), Modelle bis § kn$",
+     "sea breeze possible, mostly light, from §, starting ~§:00 (land § °C, water § °C, background wind § kn §), models up to § kn"),
+    (r"^Seewind möglich, meist schwach, aus § ab ~§ Uhr \(Land § °C, Wasser § °C, Grundwind § kn §\), in den Modellen kaum$",
+     "sea breeze possible, mostly light, from §, starting ~§:00 (land § °C, water § °C, background wind § kn §), hardly in the models"),
+    (r"^Seewind möglich, meist schwach \(Land § °C, Wasser § °C, ab ~§ Uhr\): (.+) – Modelle sehen ihn$",
+     "sea breeze possible, mostly light (land § °C, water § °C, from ~§:00): {} – the models see it"),
+    (r"^Seewind möglich, meist schwach \(Land § °C, Wasser § °C, ab ~§ Uhr\): (.+) – in den Modellen kaum$",
+     "sea breeze possible, mostly light (land § °C, water § °C, from ~§:00): {} – hardly in the models"),
+    (r"^Thermik-Index an Messungen ohne Treffsicherheit, deshalb ausgeblendet: (.+)\.$",
+     "Thermal index without skill against measurements, therefore hidden: {}."),
     (r"^geprüft §–§: an solchen Tagen § kn gegenüber den Modellen$", "checked §–§: on such days § kn vs. the models"),
     (r"^Gemessen §–§: an solchen Tagen in § % ab § kn aus der Thermikrichtung, in § % ab § kn – (.+)$",
      "Measured §–§: on such days § % reached § kn or more from the thermal direction, § % reached § kn – {}"),
@@ -11367,7 +11379,14 @@ def methodik_html(jetzt: datetime, quelle: str, args, startseite: str) -> str:
                 'Modellvorhersagen, gegen die gemessenen Nachmittage an Uferstationen (Kiel-Holtenau, Schönhagen, Fehmarn, '
                 'St. Peter-Ording; Quinten am Walensee, Achenkirch am Achensee). Wo das klar besser passte, gelten die '
                 'geprüften Schwellen; dazu steht, wie oft der Wind an solchen Tagen wirklich kam. Gardasee: keine frei '
-                'verfügbare Messhistorie, dort bleibt die Faustregel.</p>' if THERMIK_PRUEFUNG else
+                'verfügbare Messhistorie, dort bleibt die Faustregel.</p>'
+                '<p>Ergebnis Seewind: An diesen Küsten kommt er meist nur schwach (an Land 5–8 kn), gleitbar fast nie. '
+                'Der Hinweis lautet deshalb „Seewind möglich, meist schwach“ und erscheint nur bei Sonne, schwachem '
+                'Grundwind und 2–8 K Unterschied zwischen Land und Wasser; „Thermik verstärkt“ entfällt (gemessen '
+                'kaum ein halber Knoten).</p>'
+                + (f'<p>Thermik-Index an Messungen ohne Treffsicherheit, deshalb ausgeblendet: '
+                   f'{", ".join(next((r["name"] for r in REVIERE if r["id"] == x), x) for x in THERMIK_VERBORGEN)}.</p>'
+                   if THERMIK_VERBORGEN else '') if THERMIK_PRUEFUNG else
                 '<p>Seewind und Thermik sind Faustregeln, noch nicht an Messungen geprüft.</p>')
              + ('<p>Der Föhn-Index für Bodensee und Walensee ist inzwischen an MeteoSwiss-Messungen geprüft: Für jede '
                 'Druckklasse steht dabei, an wie vielen Tagen es an den Stationen wirklich mit mindestens 15 kn wehte.</p>'
@@ -18494,8 +18513,10 @@ def klima_revier_html(rid: str) -> str:
                 f'<p class="sub">{e_txt(revier(rid)["saison_aus"][1])}</p></section>')
     if revier(rid).get("thermik"):
         return (f'<section class="saison"><h2 id="saison">Saison{info_knopf("Thermik sehen die Modelle kaum – keine Modell-Saison.")}</h2>'
-                '<p class="sub">Thermik-Revier – die Modelle sehen Ora und Pelèr kaum, deshalb keine Saison-Statistik.</p>'
-                '</section>')
+                + ('<p class="sub">Thermik-Revier – die Modelle sehen Ora und Pelèr kaum, deshalb keine Saison-Statistik.</p>'
+                   if rid == "garda" else
+                   '<p class="sub">Thermik-Revier – die Modelle sehen den Thermikwind kaum, deshalb keine Saison-Statistik.</p>')
+                + '</section>')
     if not rz or not any(m[1] for m in rz):
         return ""
     stufe = ""             # seit 31.10.2026 alle Stufen
@@ -19188,7 +19209,7 @@ def _th_messreihe(quelle: str, lat: float, lon: float, von: date, bis: date
         if quelle.startswith("geosphere:") and len(roh) < soll / 2:
             # TAWES-Archiv reicht nur wenige Monate zurück (1.1.1: Achenkirch 2025 leer, 2026 ab August) →
             # Klimadatensatz klima-v2-10min derselben Station, gleiche Parameter in Kleinschreibung (1.1.2)
-            roh.update({t: v for t, v in _geosphere_klima(quelle.split(":", 1)[1], von, bis).items()
+            roh.update({t: v for t, v in _geosphere_klima(quelle.split(":", 1)[1], von, bis, lat, lon).items()
                         if a <= t < b and t not in roh})
     else:
         roh = hole_messreihe(lat, lon, a, b)[0]
@@ -19205,24 +19226,27 @@ def _th_messreihe(quelle: str, lat: float, lon: float, von: date, bis: date
     return reihe
 
 
-def _geosphere_klima(station: str, von: date, bis: date
-                     ) -> Dict[datetime, Tuple[float, Optional[float], Optional[float]]]:
-    """GeoSphere klima-v2-10min (lange Historie, CC BY 4.0): Wert zur vollen Stunde, Ortszeit, kn."""
+_GS_KLIMA_WAHL: dict = {}     # Station → (Station im Klimadatensatz, Parameter Speed/Böe/Richtung)
+
+
+def _gs_klima_holen(station: str, par: Tuple[str, str, str], von: date, bis: date
+                    ) -> Tuple[Dict[datetime, Tuple[float, Optional[float], Optional[float]]], List[str]]:
     aus: Dict[datetime, Tuple[float, Optional[float], Optional[float]]] = {}
     fehler = []
     for x, y in _th_stuecke(von, bis, 30):
         print(f"\r\033[2K  GeoSphere Klima {station}: {x:%d.%m.%Y} – {y:%d.%m.%Y} …", end="", file=sys.stderr, flush=True)
-        url = (f"{GEOSPHERE_API}/station/historical/klima-v2-10min?parameters=ffam,ffx,dd&station_ids={station}"
-               f"&start={x - timedelta(days=1):%Y-%m-%d}T22:00&end={y:%Y-%m-%d}T23:50&output_format=geojson")
+        url = (f"{GEOSPHERE_API}/station/historical/klima-v2-10min?parameters={','.join(p for p in par if p)}"
+               f"&station_ids={station}&start={x - timedelta(days=1):%Y-%m-%d}T22:00&end={y:%Y-%m-%d}T23:50"
+               f"&output_format=geojson")
         try:
             d = json.loads(_karte_get(url, 90, versuche=3).decode("utf-8", "replace"))
         except (RuntimeError, ValueError) as e:
-            fehler.append(f"{x:%d.%m.}–{y:%d.%m.%Y} ({e})")
+            fehler.append(f"{x:%d.%m.}–{y:%d.%m.%Y} ({str(e)[:120]})")
             continue
         ts = d.get("timestamps") or []
         for ft in d.get("features") or []:
-            par = (ft.get("properties") or {}).get("parameters") or {}
-            reihen = [((par.get(k) or par.get(k.upper()) or {}).get("data") or []) for k in ("ffam", "ffx", "dd")]
+            pa = (ft.get("properties") or {}).get("parameters") or {}
+            reihen = [((pa.get(k) or {}).get("data") or []) if k else [] for k in par]
             for i, t_txt in enumerate(ts):
                 try:
                     t = datetime.fromisoformat(t_txt).astimezone(timezone.utc).replace(tzinfo=None)
@@ -19235,9 +19259,47 @@ def _geosphere_klima(station: str, von: date, bis: date
                     continue
                 aus[_utc_zu_berlin(t)] = (v[0] * 1.943844, None if v[1] is None else v[1] * 1.943844, v[2])
     print("\r\033[2K", end="", file=sys.stderr, flush=True)
+    return aus, fehler
+
+
+def _geosphere_klima(station: str, von: date, bis: date, lat: float, lon: float
+                     ) -> Dict[datetime, Tuple[float, Optional[float], Optional[float]]]:
+    """GeoSphere klima-v2-10min (lange Historie, CC BY 4.0): Wert zur vollen Stunde, Ortszeit, kn.
+    Erst dieselbe Station-ID mit ffam/ffx/dd; liefert das nichts, sucht die Metadaten die nächste Klimastation
+    (≤ 15 km) und die dortigen Namen für Wind und Richtung (1.2)."""
+    wahl = _GS_KLIMA_WAHL.get(station, (station, ("ffam", "ffx", "dd")))
+    aus, fehler = _gs_klima_holen(wahl[0], wahl[1], von, bis)
+    if not aus and station not in _GS_KLIMA_WAHL:
+        try:
+            meta = json.loads(_karte_get(f"{GEOSPHERE_API}/station/historical/klima-v2-10min/metadata", 90,
+                                         versuche=3).decode("utf-8", "replace"))
+        except (RuntimeError, ValueError) as e:
+            print(f"  Hinweis: GeoSphere-Klimametadaten nicht lesbar ({str(e)[:120]})")
+            meta = {}
+        namen = [str(p.get("name")) for p in meta.get("parameters") or [] if isinstance(p, dict)]
+        wahl_p = lambda kand: next((k for k in kand if k in namen), "")
+        par = (wahl_p(("ffam", "ff", "FFAM", "FF", "vv")), wahl_p(("ffx", "FFX")), wahl_p(("dd", "DD", "ddm")))
+        st_liste = []
+        for x in meta.get("stations") or []:
+            try:
+                st_liste.append((_abstand_km(lat, lon, float(x["lat"]), float(x["lon"])), str(x["id"]), str(x.get("name", "")),
+                                 str(x.get("valid_from", ""))[:10], str(x.get("valid_to", ""))[:10]))
+            except (KeyError, TypeError, ValueError):
+                continue
+        st_liste.sort()
+        nah = [x for x in st_liste if x[0] <= 15]
+        print(f"  GeoSphere-Klimadatensatz: Parameter Wind={par[0] or '–'}, Böe={par[1] or '–'}, Richtung={par[2] or '–'}; "
+              "nächste Stationen: " + "; ".join(f"{i} {n} ({k:.1f} km, {a}–{b})" for k, i, n, a, b in st_liste[:3]))
+        if par[0] and nah:
+            _GS_KLIMA_WAHL[station] = wahl = (nah[0][1], par)
+            aus, fehler = _gs_klima_holen(wahl[0], wahl[1], von, bis)
+        else:
+            _GS_KLIMA_WAHL[station] = wahl
     if fehler:
-        print(f"  Hinweis: GeoSphere klima-v2-10min {station} – {len(fehler)} Abschnitt(e) ohne Daten: "
+        print(f"  Hinweis: GeoSphere klima-v2-10min {wahl[0]} – {len(fehler)} Abschnitt(e) ohne Daten: "
               f"{'; '.join(fehler[:2])}" + (" …" if len(fehler) > 2 else ""))
+    if not aus:
+        print(f"  Hinweis: GeoSphere klima-v2-10min {wahl[0]} {von:%d.%m.}–{bis:%d.%m.%Y}: keine Daten")
     return aus
 
 
@@ -19271,19 +19333,16 @@ HSS_MIN = 0.2          # darunter wird nichts übernommen – die Regel kann dan
 HSS_GEWINN = 0.05      # und so viel besser als die Faustregel muss es sein
 
 
-def _sw_regel(f: dict, dt_m: float, dt_w: float, grund_max: float) -> Optional[Tuple[str, int]]:
-    """Dieselbe Entscheidung wie seewind_bewerten, mit wählbaren Schwellen. → (Art, Stufe) oder None."""
-    if f["dt"] is None or f["dt"] < dt_m or not f["sonnig"]:
+def _sw_regel(f: dict, dt_m: float, dt_max: float, grund_max: float) -> Optional[Tuple[str, int]]:
+    """Dieselbe Entscheidung wie seewind_bewerten (1.2), mit wählbaren Schwellen. → ("seewind", 1) oder None."""
+    if f["dt"] is None or not (dt_m <= f["dt"] < dt_max) or not f["sonnig"]:
         return None
     g, lage = f["g_ws"], f["lage"]
-    if lage == "auflandig" and SEEWIND_VERST_GRUND[0] <= g <= SEEWIND_VERST_GRUND[1]:
-        return ("verstaerkt", 2 if f["dt"] >= dt_w else 1)
-    if g > grund_max:
+    if lage == "auflandig" and g >= SEEWIND_VERST_GRUND[0]:
         return None
-    ablandig = lage == "ablandig"
-    if ablandig and g > 8:
+    if g > grund_max or (lage == "ablandig" and g > 8):
         return None
-    return ("seewind", 2 if (f["dt"] >= dt_w and g <= 8 and not ablandig) else 1)
+    return ("seewind", 1)
 
 
 SW_STUFEN = (("drehung", "auflandig gedreht (jede Stärke)"), ("w5", "≥ 5 kn"), ("ereignis", "≥ 8 kn"),
@@ -19347,55 +19406,43 @@ def _seewind_tage(saisons: List[Tuple[date, date]]) -> Tuple[List[dict], int]:
 
 
 def _seewind_auswerten(tage: List[dict]) -> dict:
+    """1.2: Maßstab ist Seewind ≥ 5 kn (das verspricht „möglich, meist schwach“); ≥ 8 kn wird mitgezählt."""
     std = SEEWIND_STANDARD
-    ereignisse = sum(1 for f in tage if f["ereignis"])
+    ereignisse = sum(1 for f in tage if f["w5"])
 
-    def bewerten(dt_m: float, dt_w: float, g: float) -> dict:
-        paare, st = [], {1: [0, 0], 2: [0, 0]}
+    def bewerten(dt_m: float, dt_max: float, g: float) -> dict:
+        paare, q = [], [0, 0, 0]
         for f in tage:
-            r = _sw_regel(f, dt_m, dt_w, g)
-            p = r is not None and r[0] == "seewind"
-            paare.append((p, f["ereignis"]))
+            p = _sw_regel(f, dt_m, dt_max, g) is not None
+            paare.append((p, f["w5"]))
             if p:
-                st[r[1]][0] += 1
-                st[r[1]][1] += int(f["ereignis"])
+                q[0] += 1
+                q[1] += int(f["w5"])
+                q[2] += int(f["ereignis"])
         csi, a, b, c = _csi(paare)
-        return {"dt_m": dt_m, "dt_w": dt_w, "grund": g, "csi": round(csi, 3), "hss": round(_hss(paare), 3),
-                "treffer": a, "fehlalarm": b, "verpasst": c, "quote": {"1": st[1], "2": st[2]}}
+        return {"dt_m": dt_m, "dt_max": dt_max, "grund": g, "csi": round(csi, 3), "hss": round(_hss(paare), 3),
+                "treffer": a, "fehlalarm": b, "verpasst": c, "quote": q}
     standard = bewerten(*std)
-    raster = [bewerten(dm, max(std[1], dm + 2), g) for dm in (3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0)
-              for g in (6.0, 8.0, 10.0, 12.0, 14.0)]
+    raster = [bewerten(dm, dx, g) for dm in (0.0, 1.0, 2.0, 3.0, 4.0, 5.0) for dx in (6.0, 8.0, 10.0, 99.0)
+              if dx > dm + 2 for g in (6.0, 8.0, 10.0, 12.0)]
     bester = max(raster, key=lambda x: (x["hss"], -abs(x["dt_m"] - std[0]) - abs(x["grund"] - std[2]) / 2))
     vorschlag = None
     if (ereignisse >= 25 and bester["treffer"] + bester["fehlalarm"] >= 15 and bester["hss"] >= HSS_MIN
             and bester["hss"] >= standard["hss"] + HSS_GEWINN):
-        vorschlag = {"dt_m": bester["dt_m"], "dt_w": bester["dt_w"], "grund": bester["grund"]}
-    # Stufe „wahrscheinlich“: ab dem Temperaturunterschied, ab dem mindestens jeder zweite Tag Seewind brachte.
-    # Bringt sie das nirgends und weniger als jeden dritten Tag, wird sie abgeschaltet – „wahrscheinlich“ wäre falsch.
-    basis = vorschlag or {"dt_m": std[0], "dt_w": std[1], "grund": std[2]}
-    for dw in [x / 2 for x in range(int(basis["dt_m"] * 2) + 2, 25)]:
-        q = bewerten(basis["dt_m"], dw, basis["grund"])["quote"]["2"]
-        if q[0] >= 8 and q[1] / q[0] >= 0.5:
-            if abs(dw - basis["dt_w"]) >= 1 and ereignisse >= 25:
-                vorschlag = dict(basis, dt_w=dw)
-            break
-    else:
-        q = bewerten(basis["dt_m"], basis["dt_w"], basis["grund"])["quote"]["2"]
-        if ereignisse >= 25 and q[0] >= 15 and q[1] / q[0] < 0.35:
-            vorschlag = dict(basis, dt_w=99.0)
-    angewandt = bewerten(*(vorschlag[k] for k in ("dt_m", "dt_w", "grund"))) if vorschlag else standard
+        vorschlag = {"dt_m": bester["dt_m"], "dt_max": bester["dt_max"], "grund": bester["grund"]}
+    angewandt = bewerten(*(vorschlag[k] for k in ("dt_m", "dt_max", "grund"))) if vorschlag else standard
     stationen = {}
     for name in dict.fromkeys(f["station"] for f in tage):
         sub = [f for f in tage if f["station"] == name]
-        paare = [((_sw_regel(f, *std) or ("", 0))[0] == "seewind", f["ereignis"]) for f in sub]
+        paare = [(_sw_regel(f, *std) is not None, f["w5"]) for f in sub]
         csi, a, b, c = _csi(paare)
-        stationen[name] = {"tage": len(sub), "ereignisse": sum(1 for f in sub if f["ereignis"]),
+        stationen[name] = {"tage": len(sub), "ereignisse": sum(1 for f in sub if f["w5"]),
                            "gleitbar": sum(1 for f in sub if f["gleitbar"]), "csi": round(csi, 3),
                            "hss": round(_hss(paare), 3), "treffer": a, "fehlalarm": b, "verpasst": c}
     # Diagnose 1: Erkennt die Faustregel überhaupt Seewind – vielleicht nur zu schwachen? Je Messstufe Grundrate
     # (alle Tage) gegen Trefferrate an Regel-Tagen, dazu HSS.
     stufen = {}
-    pos = [(_sw_regel(f, *std) or ("", 0))[0] == "seewind" for f in tage]
+    pos = [_sw_regel(f, *std) is not None for f in tage]
     for k, _t in SW_STUFEN:
         n_e = sum(1 for f in tage if f[k])
         n_p = sum(pos)
@@ -19412,16 +19459,17 @@ def _seewind_auswerten(tage: List[dict]) -> dict:
                and f["dt"] is not None and lo <= f["dt"] < hi]
         dt_tab.append([lo, hi, len(sub), sum(1 for f in sub if f["w5"]), sum(1 for f in sub if f["ereignis"])])
     nicht_sonnig = [f for f in tage if not f["sonnig"] and f["g_ws"] <= 10]
-    # Thermik-Verstärkung: Messung minus Modell am Nachmittag an „verstärkt“-Tagen gegen andere auflandige Tage
+    # Thermik-Verstärkung (Diagnose, Hinweis seit 1.2 entfallen): Messung minus Modell am Nachmittag an sonnigen
+    # auflandigen Tagen mit ≥ 5 K gegen andere auflandige Tage
     v_ja, v_nein = [], []
     for f in tage:
         if f["plus"] is None or f["lage"] != "auflandig" or not (SEEWIND_VERST_GRUND[0] <= f["g_ws"] <= SEEWIND_VERST_GRUND[1]):
             continue
-        r = _sw_regel(f, *std)
-        (v_ja if r and r[0] == "verstaerkt" else v_nein).append(f["plus"])
+        (v_ja if (f["sonnig"] and f["dt"] is not None and f["dt"] >= 5) else v_nein).append(f["plus"])
     verst = {"tage": len(v_ja), "plus": round(sum(v_ja) / len(v_ja), 1) if v_ja else None,
              "kontrolle_tage": len(v_nein), "kontrolle_plus": round(sum(v_nein) / len(v_nein), 1) if v_nein else None}
-    return {"tage": len(tage), "ereignisse": ereignisse, "gleitbar": sum(1 for f in tage if f["gleitbar"]),
+    return {"tage": len(tage), "ereignisse": ereignisse, "w8": sum(1 for f in tage if f["ereignis"]),
+            "gleitbar": sum(1 for f in tage if f["gleitbar"]),
             "standard": standard, "bester": bester, "vorschlag": vorschlag, "angewandt": angewandt,
             "stationen": stationen, "verstaerkt": verst, "stufen": stufen, "dt_tab": dt_tab,
             "nicht_sonnig": [len(nicht_sonnig), sum(1 for f in nicht_sonnig if f["w5"]),
@@ -19582,21 +19630,20 @@ def thermik_drucken(e: dict) -> None:
     if sw:
         s, b = sw["standard"], sw["bester"]
         print(f"SEEWIND (Kieler Bucht, Westküste) · {sw['tage']} Stationstage, davon {sw['ereignisse']} mit Seewind "
-              f"≥ 8 kn ({sw['gleitbar']} ≥ 12 kn)" + (f" · Wassertemperatur an {sw['sst_klima_tage']} Tagen aus Klimawerten"
+              f"≥ 5 kn ({sw.get('w8', '?')} ≥ 8 kn, {sw['gleitbar']} ≥ 12 kn)" + (f" · Wassertemperatur an {sw['sst_klima_tage']} Tagen aus Klimawerten"
                                                       if sw.get("sst_klima_tage") else ""))
         for name, x in sw["stationen"].items():
-            print(f"  {name:18} {x['tage']:4} Tage · {x['ereignisse']:3} Seewind · Faustregel: {x['treffer']} Treffer, "
+            print(f"  {name:18} {x['tage']:4} Tage · {x['ereignisse']:3} Seewind ≥ 5 kn · Regel: {x['treffer']} Treffer, "
                   f"{x['fehlalarm']} Fehlalarme, {x['verpasst']} verpasst (HSS {x['hss']:.2f})")
-        for titel, x in (("Faustregel", s), ("bestes Raster", b)):
-            q1, q2 = x["quote"]["1"], x["quote"]["2"]
-            print(f"  {titel:14} ab {x['dt_m']:g} K, Grundwind ≤ {x['grund']:g} kn: HSS {x['hss']:.2f} (CSI {x['csi']:.2f}) · "
-                  f"„möglich“ kam an {_pz(q1[1], q1[0])} von {q1[0]} Tagen, „wahrscheinlich“ (ab {x['dt_w']:g} K) "
-                  f"an {_pz(q2[1], q2[0])} von {q2[0]}")
+        for titel, x in (("Regel", s), ("bestes Raster", b)):
+            q = x["quote"]
+            print(f"  {titel:14} {x['dt_m']:g}–{x['dt_max']:g} K, Grundwind ≤ {x['grund']:g} kn: HSS {x['hss']:.2f} "
+                  f"(CSI {x['csi']:.2f}) · an {q[0]} Tagen gemeldet, ≥ 5 kn an {_pz(q[1], q[0])}, ≥ 8 kn an {_pz(q[2], q[0])}")
         v = sw.get("vorschlag")
-        print("  → übernommen: " + (f"ab {v['dt_m']:g} K, „wahrscheinlich“ ab {v['dt_w']:g} K, Grundwind ≤ {v['grund']:g} kn"
+        print("  → übernommen: " + (f"{v['dt_m']:g}–{v['dt_max']:g} K, Grundwind ≤ {v['grund']:g} kn"
                                     if v else f"nichts – die Faustregel bleibt (Übernahme erst ab HSS {HSS_MIN:g} und "
                                               f"+{HSS_GEWINN:g} gegenüber der Faustregel)"))
-        print("  Diagnose – Messstufe: an allen Tagen / an Tagen mit „Seewind“ laut Faustregel (HSS)")
+        print("  Diagnose – Messstufe: an allen Tagen / an Tagen mit „Seewind“ laut Regel (HSS)")
         for k, t in SW_STUFEN:
             x = sw["stufen"][k]
             print(f"    {t:32} {_pz(*x['grund']):>5} / {_pz(*x['regel']):>5}  ({x['hss']:+.2f})")
@@ -19609,7 +19656,7 @@ def thermik_drucken(e: dict) -> None:
               f"≥ 8 kn {_pz(ns[2], ns[0])}")
         vs = sw["verstaerkt"]
         if vs["tage"] and vs["kontrolle_tage"]:
-            print(f"  Thermik verstärkt: an {vs['tage']} solchen Tagen Messung − Modell {vs['plus']:+.1f} kn, "
+            print(f"  (früher „Thermik verstärkt“) an {vs['tage']} sonnigen auflandigen Tagen ab 5 K Messung − Modell {vs['plus']:+.1f} kn, "
                   f"an {vs['kontrolle_tage']} anderen auflandigen Tagen {vs['kontrolle_plus']:+.1f} kn "
                   f"→ Verstärkung etwa {vs['plus'] - vs['kontrolle_plus']:+.1f} kn")
         print()
@@ -19635,25 +19682,39 @@ def thermik_drucken(e: dict) -> None:
 
 
 def _th_vorschlag_gilt() -> bool:
-    """Vorschläge aus 1.1 (Übernahme nach CSI-Gewinn, zu lasch) werden nicht angewandt."""
-    return str(THERMIK_PRUEFUNG.get("fassung", "")) not in ("", "1.1")
+    """Vorschläge erst ab 1.2 (1.1: Übernahme nach CSI-Gewinn, zu lasch; 1.1.x: alte Seewind-Regel)."""
+    return str(THERMIK_PRUEFUNG.get("fassung", "")) not in ("", "1.1", "1.1.1", "1.1.2")
 
 
 def thermik_pruefung_laden() -> dict:
     """thermik_pruefung.json lesen; geprüfte Seewind-Schwellen übernehmen (nur plausible Werte)."""
-    global THERMIK_PRUEFUNG, SEEWIND_DT_MOEGLICH, SEEWIND_DT_WAHRSCH, SEEWIND_GRUND_MAX
+    global THERMIK_PRUEFUNG, SEEWIND_DT_MOEGLICH, SEEWIND_DT_MAX, SEEWIND_GRUND_MAX
     try:
         THERMIK_PRUEFUNG = json.loads(THERMIK_PRUEF_DATEI.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         THERMIK_PRUEFUNG = {}
     v = (THERMIK_PRUEFUNG.get("seewind") or {}).get("vorschlag") if _th_vorschlag_gilt() else None
     try:
-        if v and 2 <= v["dt_m"] <= 10 and v["dt_m"] < v["dt_w"] and 4 <= v["grund"] <= 16:
-            SEEWIND_DT_MOEGLICH, SEEWIND_DT_WAHRSCH, SEEWIND_GRUND_MAX = (float(v["dt_m"]), float(v["dt_w"]),
-                                                                            float(v["grund"]))
+        if v and 0 <= v["dt_m"] <= 10 and v["dt_m"] + 2 < v["dt_max"] and 4 <= v["grund"] <= 16:
+            SEEWIND_DT_MOEGLICH, SEEWIND_DT_MAX, SEEWIND_GRUND_MAX = (float(v["dt_m"]), float(v["dt_max"]),
+                                                                        float(v["grund"]))
     except (KeyError, TypeError):
         pass
+    # Thermik-Index, der an Messungen nichts trifft, wird nicht gezeigt (1.2; Walensee: HSS ≈ 0 in jeder Stufe)
+    for r in list(THERMIK_REVIERE):
+        if not thermik_zeigen(r):
+            THERMIK_VERBORGEN[r] = THERMIK_REVIERE.pop(r)
     return THERMIK_PRUEFUNG
+
+
+THERMIK_VERBORGEN: dict = {}
+THERMIK_HSS_ZEIGEN = 0.1        # unter diesem HSS (beste Messstufe) gilt der Index als wertlos
+
+
+def thermik_zeigen(rid: str) -> bool:
+    e = (THERMIK_PRUEFUNG.get("thermik") or {}).get(rid) or {}
+    h = e.get("hss_stufen") or {}
+    return not (e.get("tage", 0) >= THERMIK_MIN_TAGE and h and max(h.values()) < THERMIK_HSS_ZEIGEN)
 
 
 def thermik_schwellen(rid: str) -> Tuple[float, float]:
@@ -19703,14 +19764,15 @@ def seewind_verst_text() -> str:
             .replace(".", ","))
 
 
-def seewind_quote_text(stufe: int) -> str:
-    """„Geprüft: kam an X % solcher Tage“ für den Seewind (Stufe 1/2); "" ohne Prüfung oder zu wenige Tage."""
+def seewind_quote_text(stufe: int = 1) -> str:
+    """„geprüft 2025–2026: ≥ 5 kn an X % solcher Tage, ≥ 8 kn an Y %“ (Regel ab 1.2); "" ohne passende Prüfung."""
     sw = THERMIK_PRUEFUNG.get("seewind") or {}
-    q = (((sw.get("angewandt") if (_th_vorschlag_gilt() and sw.get("vorschlag")) else sw.get("standard")) or {})
-         .get("quote") or {}).get(str(stufe))
-    if not q or q[0] < 8:
+    x = (sw.get("angewandt") if (_th_vorschlag_gilt() and sw.get("vorschlag")) else sw.get("standard")) or {}
+    q = x.get("quote")
+    if "dt_max" not in x or not isinstance(q, list) or q[0] < 8:
         return ""
-    return f"geprüft {THERMIK_PRUEFUNG.get('jahre', '')}: kam an {100 * q[1] / q[0]:.0f} % solcher Tage"
+    return (f"geprüft {THERMIK_PRUEFUNG.get('jahre', '')}: ≥ 5 kn an {100 * q[1] / q[0]:.0f} % solcher Tage, "
+            f"≥ 8 kn an {100 * q[2] / q[0]:.0f} %")
 
 
 def druck_pruefen(args) -> None:

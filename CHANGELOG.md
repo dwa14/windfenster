@@ -1,5 +1,22 @@
 # Änderungen
 
+## 1.2 – 23.11.2026
+
+Seewind und Thermik nach der Prüfung an Messungen umgebaut.
+
+- **Seewind:** nur noch „Seewind möglich, meist schwach“ – bei Sonne, Grundwind ≤ 10 kn (nicht ablandig über 8 kn,
+  nicht schon auflandig ab 6 kn) und 2–8 K Unterschied Land−Wasser. Grund: An vier Küstenstationen (2 Saisons) traf
+  die alte Regel nur schwachen Seewind (≥ 5 kn an Regel-Tagen 33 % statt 17 %, ≥ 12 kn praktisch nie); ein
+  Unterschied über ~3 K brachte nichts, ab 8 K wurde Seewind seltener. „Wahrscheinlich“ entfällt
+- **„Thermik verstärkt“ entfällt** (gemessen +0,5 kn gegenüber anderen auflandigen Tagen)
+- `--thermik-pruefen` prüft die neue Regel gegen Seewind ≥ 5 kn (≥ 8 kn mitgezählt), Raster 0–5 K × Obergrenze
+  6/8/10 K/offen × Grundwind; Seite zeigt „geprüft: ≥ 5 kn an X % solcher Tage, ≥ 8 kn an Y %“
+- **Thermik-Index ohne Treffsicherheit wird ausgeblendet** (HSS < 0,1 in jeder Messstufe bei ≥ 60 Tagen) – derzeit
+  Walensee (Quinten: nachmittags Westwind an rund der Hälfte der Tage, unabhängig vom Score). Methodik nennt es
+- GeoSphere-Klimadatensatz: findet über die Metadaten die nächste Klimastation (≤ 15 km) und die dortigen
+  Parameternamen, falls die TAWES-ID dort nichts liefert
+- Saison-Abschnitt: „Ora und Pelèr“ nur noch am Gardasee, sonst allgemein „Thermikwind“
+
 ## 1.1.2 – 23.11.2026
 
 - Thermik-Prüfung Achensee: Das TAWES-Archiv von GeoSphere reicht nur wenige Monate zurück (Achenkirch 2025 leer,
