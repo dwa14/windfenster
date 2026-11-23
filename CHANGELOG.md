@@ -1,5 +1,25 @@
 # Änderungen
 
+## 1.1 – 23.11.2026
+
+Seewind und Thermik an Messungen prüfen.
+
+- Neu: `--thermik-pruefen` (Zeitraum `--jahre`, Standard 2 Saisons, höchstens 4). Dieselbe Regel wie im Lauf, mit
+  den damaligen Modellvorhersagen (Open-Meteo Historical Forecast) gegen gemessene Nachmittage:
+  - Seewind-Index: Kiel-Holtenau, Schönhagen, Fehmarn, St. Peter-Ording (DWD), März–September. Raster über
+    Temperaturunterschied Land−Wasser und Grundwind, Maß CSI; „wahrscheinlich“ ab dem Unterschied, ab dem mindestens
+    jeder zweite Tag Seewind brachte
+  - „Thermik verstärkt“: Messung minus Modell an solchen Tagen gegen andere auflandige Tage
+  - Thermik-Score: Walensee (MeteoSwiss Quinten, Talwind West), Achensee (GeoSphere Achenkirch, Nordwind),
+    April–September; Anteil der Tage mit ≥ 3 h ≥ 8 bzw. 12 kn aus der Thermikrichtung je Klasse, Schwellen per CSI
+- Ergebnis in `thermik_pruefung.json`; übernommen wird nur, was mit genug Ereignissen klar besser ist
+  (sonst bleibt die Faustregel, aber mit Messzahlen)
+- Seiten: „An Messungen geprüft“ statt „Faustregel“ beim Thermik-Index, „Gemessen …: an solchen Tagen in X % …“
+  im Tooltip und in der Tabelle, Seewind mit „geprüft: kam an X % solcher Tage“; Methodik-Seite angepasst
+- Rohdaten in `thermik_cache/` – ein zweiter Lauf kostet keine Open-Meteo-Abrufe (der erste etwa 330)
+- Englische Texte für Seewind und „Thermik verstärkt“ ergänzt (fehlten bisher, fielen im Demo-November nicht auf)
+- Gardasee bleibt Faustregel (keine frei verfügbare Messhistorie)
+
 ## 1.0 – 23.11.2026
 
 Erste versionierte Fassung. Öffentlich seit 08.11.2026 unter https://windfenster.org/.

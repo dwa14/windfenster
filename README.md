@@ -18,7 +18,8 @@ python3 windsurf_spots.py --nur-jetzt
 python3 windsurf_spots.py --version
 ```
 
-Weitere Auswertungen: `--validieren`, `--treffer`, `--richtung-pruefen`, `--druck-pruefen`,
+Weitere Auswertungen: `--validieren`, `--treffer`, `--richtung-pruefen`, `--druck-pruefen`, `--foehn-pruefen`,
+`--thermik-pruefen`,
 `--stationen-suchen SPOT`, `--demo` (ohne Netz, zum Testen).
 
 ## Nicht im Repository (bleibt auf dem Pi)
