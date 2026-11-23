@@ -376,7 +376,7 @@ OEFFENTLICH_TITEL = "Windfenster"           # Name seit 01.11.2026 (David)
 MARKE = "Windfenster"
 # Versionsnummer (23.11.2026, Stand des Livegangs + Umbau = 1.0). Kleine Korrekturen 1.0.1, neue Funktionen 1.1,
 # große Umbauten 2.0. Jede Version steht in CHANGELOG.md und als Git-Tag (vX.Y[.Z]).
-VERSION = "1.2"
+VERSION = "1.2.1"
 MARKE_UNTERTITEL = "Windvorhersage für Windsurfen, Kiten & Wingen"
 MARKE_LOGO = ('<svg viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><defs><linearGradient id="wf-g" '
               'x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5fd0ea"/><stop offset="1" stop-color="#1d5fc4"/>'
@@ -19641,8 +19641,8 @@ def thermik_drucken(e: dict) -> None:
                   f"(CSI {x['csi']:.2f}) · an {q[0]} Tagen gemeldet, ≥ 5 kn an {_pz(q[1], q[0])}, ≥ 8 kn an {_pz(q[2], q[0])}")
         v = sw.get("vorschlag")
         print("  → übernommen: " + (f"{v['dt_m']:g}–{v['dt_max']:g} K, Grundwind ≤ {v['grund']:g} kn"
-                                    if v else f"nichts – die Faustregel bleibt (Übernahme erst ab HSS {HSS_MIN:g} und "
-                                              f"+{HSS_GEWINN:g} gegenüber der Faustregel)"))
+                                    if v else f"nichts – die Regel bleibt (Übernahme erst ab HSS {HSS_MIN:g} und "
+                                              f"+{HSS_GEWINN:g} gegenüber der Regel)"))
         print("  Diagnose – Messstufe: an allen Tagen / an Tagen mit „Seewind“ laut Regel (HSS)")
         for k, t in SW_STUFEN:
             x = sw["stufen"][k]
@@ -19708,13 +19708,17 @@ def thermik_pruefung_laden() -> dict:
 
 
 THERMIK_VERBORGEN: dict = {}
-THERMIK_HSS_ZEIGEN = 0.1        # unter diesem HSS (beste Messstufe) gilt der Index als wertlos
+THERMIK_HSS_ZEIGEN = 0.1        # unter diesem HSS gilt der Index als wertlos
+# 1.2.1: gemessen wird an den surfrelevanten Stufen ≥ 8 / ≥ 12 kn. „Tagesgang ≥ 5 kn“ zählt nicht mehr – schwacher
+# Talwind kommt an Walensee und Achensee in der Saison fast täglich, egal was der Score sagt (Achensee: HSS 0,12 nur
+# dort, ≥ 8 kn 0,09).
+THERMIK_ZEIGEN_STUFEN = ("w8", "w12")
 
 
 def thermik_zeigen(rid: str) -> bool:
     e = (THERMIK_PRUEFUNG.get("thermik") or {}).get(rid) or {}
-    h = e.get("hss_stufen") or {}
-    return not (e.get("tage", 0) >= THERMIK_MIN_TAGE and h and max(h.values()) < THERMIK_HSS_ZEIGEN)
+    h = [v for k, v in (e.get("hss_stufen") or {}).items() if k in THERMIK_ZEIGEN_STUFEN]
+    return not (e.get("tage", 0) >= THERMIK_MIN_TAGE and h and max(h) < THERMIK_HSS_ZEIGEN)
 
 
 def thermik_schwellen(rid: str) -> Tuple[float, float]:

@@ -1,5 +1,12 @@
 # Änderungen
 
+## 1.2.1 – 23.11.2026
+
+- Thermik-Index wird nach der Treffsicherheit bei ≥ 8 / ≥ 12 kn ein- oder ausgeblendet, nicht mehr nach der besten
+  aller Stufen. Schwacher Talwind (≥ 5 kn, Tagesgang) kommt an Walensee und Achensee in der Saison fast täglich,
+  unabhängig vom Score. Damit ist neben dem Walensee auch der Achensee ausgeblendet (≥ 8 kn: HSS 0,09); Gardasee bleibt
+  Faustregel
+
 ## 1.2 – 23.11.2026
 
 Seewind und Thermik nach der Prüfung an Messungen umgebaut.
