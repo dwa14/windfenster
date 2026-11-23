@@ -1,5 +1,21 @@
 # Änderungen
 
+## 1.1.1 – 23.11.2026
+
+Korrektur der Thermik-Prüfung nach dem ersten echten Lauf.
+
+- Übernahme nach **Heidke Skill Score** statt CSI-Gewinn: mindestens HSS 0,2 und +0,05 gegenüber der Faustregel.
+  1.1 hatte Schwellen übernommen, die nicht besser waren als „immer ja“ (Walensee 0,15/0,35; Seewind ab 3 K)
+- Vorschläge aus einer `thermik_pruefung.json` von 1.1 werden nicht angewandt; Messzahlen passen zu den geltenden
+  Schwellen
+- Diagnose in der Ausgabe: Seewind je Messstufe (gedreht / ≥ 5 / ≥ 8 / ≥ 12 kn) und je Temperaturunterschied;
+  Thermik je Klasse mit Tagesgang-Kriterium und Windrose, Messabdeckung je Saison
+- GeoSphere-Messung abschnittsweise (ein Fehler kostet 30 Tage statt der Saison), lückenhafte Ablagen werden neu
+  geholt, Hinweise auf fehlende Messungen auf der normalen Ausgabe
+- „kann stärker kommen“ / „eher ein paar kn mehr“ entfällt, wenn die Prüfung unter 1,5 kn Verstärkung misst;
+  Thermik-Text „Gemessen …“ nennt den Vergleich mit „kaum“-Tagen
+- Fußzeile mit dreistelliger Version übersetzt
+
 ## 1.1 – 23.11.2026
 
 Seewind und Thermik an Messungen prüfen.

@@ -376,7 +376,7 @@ OEFFENTLICH_TITEL = "Windfenster"           # Name seit 01.11.2026 (David)
 MARKE = "Windfenster"
 # Versionsnummer (23.11.2026, Stand des Livegangs + Umbau = 1.0). Kleine Korrekturen 1.0.1, neue Funktionen 1.1,
 # große Umbauten 2.0. Jede Version steht in CHANGELOG.md und als Git-Tag (vX.Y[.Z]).
-VERSION = "1.1"
+VERSION = "1.1.1"
 MARKE_UNTERTITEL = "Windvorhersage für Windsurfen, Kiten & Wingen"
 MARKE_LOGO = ('<svg viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><defs><linearGradient id="wf-g" '
               'x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5fd0ea"/><stop offset="1" stop-color="#1d5fc4"/>'
@@ -6579,11 +6579,12 @@ def seewind_tag_text(tag: date, rid: Optional[str] = None) -> str:
         if art == "seewind":
             teile.append(f"Seewind {'wahrscheinlich' if stufe == 2 else 'möglich'} (Land {sp[0][1]['land']:.0f} °C, "
                          f"Wasser {wasser:.0f} °C, ab ~12 Uhr): {namen}"
-                         + (" – Modelle sehen ihn" if sehen else " – in den Modellen kaum, kann stärker kommen"))
+                         + (" – Modelle sehen ihn" if sehen else (" – in den Modellen kaum, kann stärker kommen"
+                                                                   if seewind_mehr_belegt() else " – in den Modellen kaum")))
         else:
             teile.append(f"Thermik verstärkt den auflandigen Wind {'deutlich' if stufe == 2 else 'etwas'} "
                          f"(Land {sp[0][1]['land']:.0f} °C, Wasser {wasser:.0f} °C, nachmittags): {namen}"
-                         + ("" if sehen else " – Modelle zeigen das kaum, eher ein paar kn mehr"))
+                         + ("" if sehen or not seewind_mehr_belegt() else " – Modelle zeigen das kaum, eher ein paar kn mehr"))
     return " · ".join(teile)
 
 
@@ -6591,7 +6592,8 @@ def seewind_spot_text(b: dict) -> str:
     if b.get("art") == "verstaerkt":
         return (f"Thermik verstärkt den auflandigen Grundwind ({b['grund']:.0f} kn {b['grund_rich']}) am Nachmittag – "
                 f"Land {b['land']:.0f} °C, Wasser {b['wasser']:.0f} °C"
-                + (f", Modelle bis {b['modell_kn']:.0f} kn" if b["modell_kn"] else ", in den Modellen kaum – eher mehr")
+                + (f", Modelle bis {b['modell_kn']:.0f} kn" if b["modell_kn"] else
+                   (", in den Modellen kaum – eher mehr" if seewind_mehr_belegt() else ", in den Modellen kaum"))
                 + seewind_verst_text())
     q = seewind_quote_text(b["stufe"])
     return (f"Seewind {'wahrscheinlich' if b['stufe'] == 2 else 'möglich'} aus {b['von']} ab ~12 Uhr "
@@ -8430,6 +8432,7 @@ EN_MUSTER = [(re.compile(rx), z) for rx, z in [
     (r"^Vorhersage (.+)$", "forecast {}"),
 ]]
 EN_MUSTER.extend((re.compile(rx), z) for rx, z in [
+    (r"^Windfenster §(\.\d+)$", "Windfenster §{}"),       # Fußzeile bei dreistelliger Version (1.1.1)
     # Seewind/Thermik (23.11.2026, 1.1): bisher ohne Übersetzung – im Demo-November kamen sie nie vor
     (r"^Seewind (wahrscheinlich|möglich) aus § ab ~§ Uhr \(Land § °C, Wasser § °C, Grundwind § kn §\), Modelle bis § kn$",
      "sea breeze {} from §, starting ~§:00 (land § °C, water § °C, background wind § kn §), models up to § kn"),
@@ -8443,6 +8446,10 @@ EN_MUSTER.extend((re.compile(rx), z) for rx, z in [
      "sea breeze {} (land § °C, water § °C, from ~§:00): {} – the models see it"),
     (r"^Seewind (wahrscheinlich|möglich) \(Land § °C, Wasser § °C, ab ~§ Uhr\): (.+) – in den Modellen kaum, kann stärker kommen$",
      "sea breeze {} (land § °C, water § °C, from ~§:00): {} – hardly in the models, may come stronger"),
+    (r"^Seewind (wahrscheinlich|möglich) \(Land § °C, Wasser § °C, ab ~§ Uhr\): (.+) – in den Modellen kaum$",
+     "sea breeze {} (land § °C, water § °C, from ~§:00): {} – hardly in the models"),
+    (r"^Thermik verstärkt den auflandigen Grundwind \(§ kn §\) am Nachmittag – Land § °C, Wasser § °C, in den Modellen kaum$",
+     "thermals boost the onshore background wind (§ kn §) in the afternoon – land § °C, water § °C, hardly in the models"),
     (r"^Thermik verstärkt den auflandigen Wind (deutlich|etwas) \(Land § °C, Wasser § °C, nachmittags\): (.+) – Modelle zeigen das kaum, eher ein paar kn mehr$",
      "thermals boost the onshore wind {} (land § °C, water § °C, afternoon): {} – the models hardly show it, expect a few kn more"),
     (r"^Thermik verstärkt den auflandigen Wind (deutlich|etwas) \(Land § °C, Wasser § °C, nachmittags\): (.+)$",
@@ -8451,6 +8458,8 @@ EN_MUSTER.extend((re.compile(rx), z) for rx, z in [
     (r"^geprüft §–§: an solchen Tagen § kn gegenüber den Modellen$", "checked §–§: on such days § kn vs. the models"),
     (r"^Gemessen §–§: an solchen Tagen in § % ab § kn aus der Thermikrichtung, in § % ab § kn – (.+)$",
      "Measured §–§: on such days § % reached § kn or more from the thermal direction, § % reached § kn – {}"),
+    (r"^Gemessen §–§: an solchen Tagen in § % ab § kn aus der Thermikrichtung \(bei „kaum“ § %\), in § % ab § kn – (.+)$",
+     "Measured §–§: on such days § % reached § kn or more from the thermal direction (on “hardly” days § %), § % reached § kn – {}"),
     (r"^(Heute|Morgen) Gleitwind in (.+): § kn aus §, §–§ Uhr \(und § weitere Spots\)\.$",
      "{} planing wind at {}: § kn from §, §–§ (and § more spots)."),
     (r"^(Heute|Morgen) Gleitwind in (.+): § kn aus §, §–§ Uhr \(und ein weiterer Spot\)\.$",
@@ -19147,11 +19156,14 @@ def _th_sst(lat: float, lon: float, von: date, bis: date) -> Dict[date, float]:
 
 def _th_messreihe(quelle: str, lat: float, lon: float, von: date, bis: date
                   ) -> Dict[datetime, Tuple[float, Optional[float]]]:
-    """Stündliche Messung {Ortszeit: (kn, Richtung)} – DWD (Bright Sky), MeteoSwiss oder GeoSphere; mit Ablage."""
+    """Stündliche Messung {Ortszeit: (kn, Richtung)} – DWD (Bright Sky), MeteoSwiss oder GeoSphere; mit Ablage.
+    Abgelegt wird nur, was mindestens halb vollständig ist; eine lückenhafte Ablage (1.1) wird neu geholt."""
     datei = THERMIK_CACHE / f"mess_{re.sub(r'[^A-Za-z0-9]+', '_', quelle)}_{von}_{bis}.json"
+    soll = ((bis - von).days + 1) * 24
     try:
-        return {datetime.fromisoformat(k): (v[0], v[1]) for k, v in
-                json.loads(datei.read_text(encoding="utf-8")).items()}
+        r = {datetime.fromisoformat(k): (v[0], v[1]) for k, v in json.loads(datei.read_text(encoding="utf-8")).items()}
+        if len(r) >= soll / 2:
+            return r
     except (OSError, ValueError, KeyError, IndexError, TypeError):
         pass
     a, b = datetime.combine(von, time(0)), datetime.combine(bis + timedelta(days=1), time(0))
@@ -19160,12 +19172,25 @@ def _th_messreihe(quelle: str, lat: float, lon: float, von: date, bis: date
         if q is None:
             q = _TH_QUELLEN[quelle] = (MeteoSwissQuelle(quelle[4:]) if quelle.startswith("msw:")
                                         else GeosphereQuelle(quelle.split(":", 1)[1]))
-        q.bereich(von, bis)
+        if quelle.startswith("geosphere:"):
+            fehler = []                          # Abschnittsweise: ein Fehler kostet nur seine 30 Tage
+            for x, y in _th_stuecke(von, bis, 30):
+                try:
+                    q.bereich(x, y)
+                except RuntimeError as e:
+                    fehler.append(f"{x:%d.%m.}–{y:%d.%m.%Y} ({e})")
+            if fehler:
+                print(f"  Hinweis: {quelle} – {len(fehler)} Abschnitt(e) ohne Daten: {'; '.join(fehler[:3])}"
+                      + (" …" if len(fehler) > 3 else ""))
+        else:
+            q.bereich(von, bis)
         roh = {t: v for t, v in q.reihe.items() if a <= t < b}
     else:
         roh = hole_messreihe(lat, lon, a, b)[0]
     reihe = {t: (v[0], v[2]) for t, v in roh.items() if v[0] is not None}
-    if reihe and bis < date.today() - timedelta(days=2):
+    if len(reihe) < soll / 2:
+        print(f"  Hinweis: {quelle} {von:%d.%m.}–{bis:%d.%m.%Y}: nur {len(reihe)} von {soll} Messstunden")
+    if len(reihe) >= soll / 2 and bis < date.today() - timedelta(days=2):
         try:
             THERMIK_CACHE.mkdir(exist_ok=True)
             datei.write_text(json.dumps({t.isoformat(timespec="minutes"): [round(k, 2), d] for t, (k, d) in reihe.items()},
@@ -19190,6 +19215,21 @@ def _csi(paare: List[Tuple[bool, bool]]) -> Tuple[float, int, int, int]:
     return (a / (a + b + c) if a + b + c else 0.0), a, b, c
 
 
+def _hss(paare: List[Tuple[bool, bool]]) -> float:
+    """Heidke Skill Score: 0 = nicht besser als Zufall bzw. „immer ja“, 1 = perfekt. (1.1.1: statt CSI-Gewinn –
+    der CSI belohnt bei häufigen Ereignissen einfach öfter „ja“ zu sagen.)"""
+    a = sum(1 for p, e in paare if p and e)
+    b = sum(1 for p, e in paare if p and not e)
+    c = sum(1 for p, e in paare if e and not p)
+    d = len(paare) - a - b - c
+    nenner = (a + c) * (c + d) + (a + b) * (b + d)
+    return 2 * (a * d - b * c) / nenner if nenner else 0.0
+
+
+HSS_MIN = 0.2          # darunter wird nichts übernommen – die Regel kann dann wenig
+HSS_GEWINN = 0.05      # und so viel besser als die Faustregel muss es sein
+
+
 def _sw_regel(f: dict, dt_m: float, dt_w: float, grund_max: float) -> Optional[Tuple[str, int]]:
     """Dieselbe Entscheidung wie seewind_bewerten, mit wählbaren Schwellen. → (Art, Stufe) oder None."""
     if f["dt"] is None or f["dt"] < dt_m or not f["sonnig"]:
@@ -19203,6 +19243,10 @@ def _sw_regel(f: dict, dt_m: float, dt_w: float, grund_max: float) -> Optional[T
     if ablandig and g > 8:
         return None
     return ("seewind", 2 if (f["dt"] >= dt_w and g <= 8 and not ablandig) else 1)
+
+
+SW_STUFEN = (("drehung", "auflandig gedreht (jede Stärke)"), ("w5", "≥ 5 kn"), ("ereignis", "≥ 8 kn"),
+             ("gleitbar", "≥ 12 kn"))
 
 
 def _seewind_tage(saisons: List[Tuple[date, date]]) -> Tuple[List[dict], int]:
@@ -19223,7 +19267,7 @@ def _seewind_tage(saisons: List[Tuple[date, date]]) -> Tuple[List[dict], int]:
             try:
                 mess = _th_messreihe(f"dwd:{s_lat:.3f},{s_lon:.3f}", s_lat, s_lon, von, bis)
             except RuntimeError as e:
-                print(f"  Hinweis: Messung {name} {von.year} fehlt ({e})", file=sys.stderr)
+                print(f"  Hinweis: Messung {name} {von.year} fehlt ({e})")
                 continue
             mod_t, mess_t = _nach_tag(mod), _nach_tag(mess)
             tag = von
@@ -19245,12 +19289,15 @@ def _seewind_tage(saisons: List[Tuple[date, date]]) -> Tuple[List[dict], int]:
                 diff = _winkel(g_wd, see)
                 mm_ws, mm_wd = vektor_mittel([(x[0], x[1]) for x in m_morgen])
                 morgen_auf = mm_ws >= 6 and _winkel(mm_wd, see) <= 60
+                morgen_auf_schwach = _winkel(mm_wd, see) <= 60 and mm_ws >= 2
                 auf_kn = [k for k, d in m_nachm if _winkel(d, see) <= 60]
                 mod_n = [hs[h][0] for h in range(13, 18) if h in hs and hs[h][0] is not None]
                 tage.append({
                     "station": name, "tag": tag_, "dt": t_land[tag_] - w, "g_ws": g_ws,
                     "lage": "auflandig" if diff <= 67.5 else ("seitlich" if diff <= 112.5 else "ablandig"),
                     "sonnig": sum(1 for x in mittag if x[2] is not None and x[2] <= 2) >= len(mittag) / 2,
+                    "drehung": len(auf_kn) >= 3 and not morgen_auf_schwach,
+                    "w5": sum(1 for k in auf_kn if k >= 5) >= 3 and not morgen_auf,
                     "ereignis": sum(1 for k in auf_kn if k >= 8) >= 3 and not morgen_auf,
                     "gleitbar": sum(1 for k in auf_kn if k >= 12) >= 3 and not morgen_auf,
                     "plus": (sum(k for k, _ in m_nachm) / len(m_nachm) - sum(mod_n) / len(mod_n)) if mod_n else None,
@@ -19272,16 +19319,18 @@ def _seewind_auswerten(tage: List[dict]) -> dict:
                 st[r[1]][0] += 1
                 st[r[1]][1] += int(f["ereignis"])
         csi, a, b, c = _csi(paare)
-        return {"dt_m": dt_m, "dt_w": dt_w, "grund": g, "csi": round(csi, 3), "treffer": a, "fehlalarm": b,
-                "verpasst": c, "quote": {"1": st[1], "2": st[2]}}
+        return {"dt_m": dt_m, "dt_w": dt_w, "grund": g, "csi": round(csi, 3), "hss": round(_hss(paare), 3),
+                "treffer": a, "fehlalarm": b, "verpasst": c, "quote": {"1": st[1], "2": st[2]}}
     standard = bewerten(*std)
     raster = [bewerten(dm, max(std[1], dm + 2), g) for dm in (3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0)
               for g in (6.0, 8.0, 10.0, 12.0, 14.0)]
-    bester = max(raster, key=lambda x: (x["csi"], -abs(x["dt_m"] - std[0]) - abs(x["grund"] - std[2]) / 2))
+    bester = max(raster, key=lambda x: (x["hss"], -abs(x["dt_m"] - std[0]) - abs(x["grund"] - std[2]) / 2))
     vorschlag = None
-    if ereignisse >= 25 and bester["treffer"] + bester["fehlalarm"] >= 15 and bester["csi"] >= standard["csi"] + 0.02:
+    if (ereignisse >= 25 and bester["treffer"] + bester["fehlalarm"] >= 15 and bester["hss"] >= HSS_MIN
+            and bester["hss"] >= standard["hss"] + HSS_GEWINN):
         vorschlag = {"dt_m": bester["dt_m"], "dt_w": bester["dt_w"], "grund": bester["grund"]}
-    # Stufe „wahrscheinlich“: kleinster Temperaturunterschied, ab dem mindestens jeder zweite Tag Seewind brachte
+    # Stufe „wahrscheinlich“: ab dem Temperaturunterschied, ab dem mindestens jeder zweite Tag Seewind brachte.
+    # Bringt sie das nirgends und weniger als jeden dritten Tag, wird sie abgeschaltet – „wahrscheinlich“ wäre falsch.
     basis = vorschlag or {"dt_m": std[0], "dt_w": std[1], "grund": std[2]}
     for dw in [x / 2 for x in range(int(basis["dt_m"] * 2) + 2, 25)]:
         q = bewerten(basis["dt_m"], dw, basis["grund"])["quote"]["2"]
@@ -19291,17 +19340,37 @@ def _seewind_auswerten(tage: List[dict]) -> dict:
             break
     else:
         q = bewerten(basis["dt_m"], basis["dt_w"], basis["grund"])["quote"]["2"]
-        q1 = bewerten(basis["dt_m"], basis["dt_w"], basis["grund"])["quote"]["1"]
-        if ereignisse >= 25 and q[0] >= 15 and q[1] / q[0] < 0.35 and q[1] / q[0] <= q1[1] / max(1, q1[0]) + 0.05:
-            vorschlag = dict(basis, dt_w=99.0)          # „wahrscheinlich“ trifft nie zu – nicht mehr anzeigen
+        if ereignisse >= 25 and q[0] >= 15 and q[1] / q[0] < 0.35:
+            vorschlag = dict(basis, dt_w=99.0)
     angewandt = bewerten(*(vorschlag[k] for k in ("dt_m", "dt_w", "grund"))) if vorschlag else standard
     stationen = {}
     for name in dict.fromkeys(f["station"] for f in tage):
         sub = [f for f in tage if f["station"] == name]
-        csi, a, b, c = _csi([((_sw_regel(f, *std) or ("", 0))[0] == "seewind", f["ereignis"]) for f in sub])
+        paare = [((_sw_regel(f, *std) or ("", 0))[0] == "seewind", f["ereignis"]) for f in sub]
+        csi, a, b, c = _csi(paare)
         stationen[name] = {"tage": len(sub), "ereignisse": sum(1 for f in sub if f["ereignis"]),
                            "gleitbar": sum(1 for f in sub if f["gleitbar"]), "csi": round(csi, 3),
-                           "treffer": a, "fehlalarm": b, "verpasst": c}
+                           "hss": round(_hss(paare), 3), "treffer": a, "fehlalarm": b, "verpasst": c}
+    # Diagnose 1: Erkennt die Faustregel überhaupt Seewind – vielleicht nur zu schwachen? Je Messstufe Grundrate
+    # (alle Tage) gegen Trefferrate an Regel-Tagen, dazu HSS.
+    stufen = {}
+    pos = [(_sw_regel(f, *std) or ("", 0))[0] == "seewind" for f in tage]
+    for k, _t in SW_STUFEN:
+        n_e = sum(1 for f in tage if f[k])
+        n_p = sum(pos)
+        t_p = sum(1 for f, p in zip(tage, pos) if p and f[k])
+        stufen[k] = {"grund": [n_e, len(tage)], "regel": [t_p, n_p],
+                     "hss": round(_hss([(p, f[k]) for f, p in zip(tage, pos)]), 3)}
+    # Diagnose 2: Hängt es am Temperaturunterschied? Nur „günstige“ Tage (sonnig, Grundwind ≤ 10 kn, nicht ablandig
+    # über 8 kn, nicht schon auflandig 6–16 kn) – je ΔT-Klasse Anteil mit Seewind ≥ 5 / ≥ 8 kn
+    dt_klassen = [(-99, 0), (0, 3), (3, 5), (5, 8), (8, 99)]
+    dt_tab = []
+    for lo, hi in dt_klassen:
+        sub = [f for f in tage if f["sonnig"] and f["g_ws"] <= 10 and not (f["lage"] == "ablandig" and f["g_ws"] > 8)
+               and not (f["lage"] == "auflandig" and f["g_ws"] >= SEEWIND_VERST_GRUND[0])
+               and f["dt"] is not None and lo <= f["dt"] < hi]
+        dt_tab.append([lo, hi, len(sub), sum(1 for f in sub if f["w5"]), sum(1 for f in sub if f["ereignis"])])
+    nicht_sonnig = [f for f in tage if not f["sonnig"] and f["g_ws"] <= 10]
     # Thermik-Verstärkung: Messung minus Modell am Nachmittag an „verstärkt“-Tagen gegen andere auflandige Tage
     v_ja, v_nein = [], []
     for f in tage:
@@ -19313,20 +19382,28 @@ def _seewind_auswerten(tage: List[dict]) -> dict:
              "kontrolle_tage": len(v_nein), "kontrolle_plus": round(sum(v_nein) / len(v_nein), 1) if v_nein else None}
     return {"tage": len(tage), "ereignisse": ereignisse, "gleitbar": sum(1 for f in tage if f["gleitbar"]),
             "standard": standard, "bester": bester, "vorschlag": vorschlag, "angewandt": angewandt,
-            "stationen": stationen, "verstaerkt": verst}
+            "stationen": stationen, "verstaerkt": verst, "stufen": stufen, "dt_tab": dt_tab,
+            "nicht_sonnig": [len(nicht_sonnig), sum(1 for f in nicht_sonnig if f["w5"]),
+                             sum(1 for f in nicht_sonnig if f["ereignis"])]}
 
 
-def _thermik_tage(rid: str, saisons: List[Tuple[date, date]]) -> List[dict]:
+SEKTOREN8 = ["N", "NO", "O", "SO", "S", "SW", "W", "NW"]
+
+
+def _thermik_tage(rid: str, saisons: List[Tuple[date, date]]) -> Tuple[List[dict], List[Tuple[int, int, int]]]:
+    """→ (Tage, je Saison (Jahr, Tage mit Messung, Saisontage))."""
     quelle, s_lat, s_lon, richt, tol = THERMIK_MESS[rid]
     lat, lon = THERMIK_REVIERE[rid]["punkt"]
     tage: List[dict] = []
+    abdeckung = []
     for von, bis in saisons:
         print(f"  Thermik {rid} {von.year} …", file=sys.stderr)
         h = _th_modell(lat, lon, von, bis, "cloud_cover,precipitation,wind_speed_700hPa", ",".join(INDIKATOR_MODELLE))
         try:
             mess = _th_messreihe(quelle, s_lat, s_lon, von, bis)
         except RuntimeError as e:
-            print(f"  Hinweis: Messung {quelle} {von.year} fehlt ({e})", file=sys.stderr)
+            print(f"  Hinweis: Messung {quelle} {von.year} fehlt ({e})")
+            abdeckung.append((von.year, 0, (bis - von).days + 1))
             continue
         reihen = {m: _nach_tag(_th_stunden({"time": h.get("time") or [],
                                             **{v: _spalte(h, v, m) or [] for v in ("cloud_cover", "precipitation",
@@ -19334,6 +19411,7 @@ def _thermik_tage(rid: str, saisons: List[Tuple[date, date]]) -> List[dict]:
                                            "cloud_cover", "wind_speed_700hPa", "precipitation"))
                   for m in INDIKATOR_MODELLE}
         mess_t = _nach_tag(mess)
+        n_mess = 0
         tag = von
         while tag <= bis:
             scores = []
@@ -19344,50 +19422,77 @@ def _thermik_tage(rid: str, saisons: List[Tuple[date, date]]) -> List[dict]:
                 pr = [x[2] for hh, x in r.items() if 10 <= hh <= 18 and x[2] is not None]
                 if c and v7:
                     scores.append(thermik_teilscore(sum(c) / len(c), sum(v7) / len(v7), sum(pr)))
-            ms = [v for hh, v in mess_t.get(tag, {}).items() if 12 <= hh <= 18]
+            mt = mess_t.get(tag, {})
+            ms = [v for hh, v in mt.items() if 12 <= hh <= 18]
+            if len(ms) >= 5:
+                n_mess += 1
             if scores and len(ms) >= 5:
                 sektor = [k for k, d in ms if d is not None and _winkel(d, richt) <= tol]
+                frueh = [k for hh, (k, d) in mt.items() if 6 <= hh <= 9 and d is not None and _winkel(d, richt) <= tol]
+                rose = [0] * 8
+                for k, d in ms:
+                    if d is not None and k >= 5:
+                        rose[int(((d + 22.5) % 360) // 45)] += 1
+                w5 = sum(1 for k in sektor if k >= 5) >= 3
                 tage.append({"tag": tag, "score": median(scores) * THERMIK_SAISON[tag.month],
-                             "w8": sum(1 for k in sektor if k >= 8) >= 3, "w12": sum(1 for k in sektor if k >= 12) >= 3})
+                             "w5": w5, "w8": sum(1 for k in sektor if k >= 8) >= 3,
+                             "w12": sum(1 for k in sektor if k >= 12) >= 3,
+                             # Tagesgang: nachmittags aus der Thermikrichtung, morgens (6–9 Uhr) noch nicht
+                             "therm": w5 and sum(1 for k in frueh if k >= 5) <= 1,
+                             "rose": rose})
             tag += timedelta(days=1)
-    return tage
+        abdeckung.append((von.year, n_mess, (bis - von).days + 1))
+    return tage, abdeckung
+
+
+TH_STUFEN = (("w5", "≥ 5 kn"), ("w8", "≥ 8 kn"), ("w12", "≥ 12 kn"), ("therm", "Tagesgang ≥ 5 kn"))
 
 
 def _thermik_auswerten(tage: List[dict]) -> dict:
     std = (0.35, 0.6)
 
+    def klasse(f: dict, t_mog: float, t_gut: float) -> str:
+        return "gut" if f["score"] >= t_gut else ("moeglich" if f["score"] >= t_mog else "kaum")
+
     def klassen(t_mog: float, t_gut: float) -> Dict[str, List[int]]:
         k = {"kaum": [0, 0, 0], "moeglich": [0, 0, 0], "gut": [0, 0, 0]}
         for f in tage:
-            kl = "gut" if f["score"] >= t_gut else ("moeglich" if f["score"] >= t_mog else "kaum")
+            kl = klasse(f, t_mog, t_gut)
             k[kl][0] += 1
             k[kl][1] += int(f["w8"])
             k[kl][2] += int(f["w12"])
         return k
 
-    def csi(schwelle: float, art: str) -> float:
-        return _csi([(f["score"] >= schwelle, f[art]) for f in tage])[0]
+    def hss(schwelle: float, art: str) -> float:
+        return _hss([(f["score"] >= schwelle, f[art]) for f in tage])
     n8, n12 = sum(1 for f in tage if f["w8"]), sum(1 for f in tage if f["w12"])
     stufen = [x / 20 for x in range(2, 19)]                       # 0,10 … 0,90
     t_mog = std[0]
     if n8 >= 20:
-        b = max((s for s in stufen if 0.15 <= s <= 0.6), key=lambda s: (round(csi(s, "w8"), 3), -abs(s - std[0])))
-        if csi(b, "w8") >= csi(std[0], "w8") + 0.02:
+        b = max((s for s in stufen if 0.15 <= s <= 0.6), key=lambda s: (round(hss(s, "w8"), 3), -abs(s - std[0])))
+        if hss(b, "w8") >= HSS_MIN and hss(b, "w8") >= hss(std[0], "w8") + HSS_GEWINN:
             t_mog = b
     t_gut = round(max(std[1], t_mog + 0.1), 2)
     if n12 >= 15:
         b = max((s for s in stufen if t_mog + 0.1 - 1e-9 <= s <= 0.85),
-                key=lambda s: (round(csi(s, "w12"), 3), -abs(s - std[1])))
-        if csi(b, "w12") >= csi(t_gut, "w12") + 0.02:
+                key=lambda s: (round(hss(s, "w12"), 3), -abs(s - std[1])))
+        if hss(b, "w12") >= HSS_MIN and hss(b, "w12") >= hss(t_gut, "w12") + HSS_GEWINN:
             t_gut = b
     vorschlag = [t_mog, t_gut] if (t_mog, t_gut) != std else None
     angew = vorschlag or list(std)
     k = klassen(*angew)
     rate = {kl: (v[1] / v[0] if v[0] else None) for kl, v in k.items()}
     trennt = rate["gut"] is not None and rate["kaum"] is not None and rate["gut"] - rate["kaum"] >= 0.15
+    # Diagnose: je Klasse alle Messstufen und die Windrose (Stunden ≥ 5 kn, 12–18 Uhr)
+    diag = {}
+    for kl in ("kaum", "moeglich", "gut"):
+        sub = [f for f in tage if klasse(f, *std) == kl]
+        rose = [sum(f["rose"][i] for f in sub) for i in range(8)]
+        diag[kl] = {"n": len(sub), **{s: sum(1 for f in sub if f[s]) for s, _ in TH_STUFEN}, "rose": rose}
     return {"tage": len(tage), "w8": n8, "w12": n12, "standard": list(std), "vorschlag": vorschlag,
-            "csi_standard": round(csi(std[0], "w8"), 3), "csi_vorschlag": round(csi(angew[0], "w8"), 3),
-            "klassen": k, "klassen_standard": klassen(*std), "trennt": trennt}
+            "hss_standard": round(hss(std[0], "w8"), 3), "hss_vorschlag": round(hss(angew[0], "w8"), 3),
+            "klassen": k, "klassen_standard": klassen(*std), "trennt": trennt, "diagnose": diag,
+            "hss_stufen": {s: round(hss(std[0], s), 3) for s, _ in TH_STUFEN}}
 
 
 def thermik_pruefen(args) -> None:
@@ -19397,7 +19502,7 @@ def thermik_pruefen(args) -> None:
     th_s = _th_saisons(jahre, *THERMIK_PRUEF_MONATE)
     alle = sorted({j for s in (sw_s, th_s) for v, _ in s for j in [v.year]})
     jtxt = f"{alle[0]}–{alle[-1]}" if len(alle) > 1 else f"{alle[0]}–{alle[0]}"
-    print(f"THERMIK-PRÜFUNG · Saisons {', '.join(str(j) for j in alle)} · Rohdaten in {THERMIK_CACHE.name}/ "
+    print(f"THERMIK-PRÜFUNG {VERSION} · Saisons {', '.join(str(j) for j in alle)} · Rohdaten in {THERMIK_CACHE.name}/ "
           f"(zweiter Lauf ohne Open-Meteo-Abrufe)\n")
     ergebnis: dict = {"erstellt": datetime.now().isoformat(timespec="minutes"), "fassung": VERSION, "jahre": jtxt}
     try:
@@ -19410,11 +19515,12 @@ def thermik_pruefen(args) -> None:
         for rid in THERMIK_MESS:
             if rid not in THERMIK_REVIERE:
                 continue
-            t = _thermik_tage(rid, th_s)
+            t, abd = _thermik_tage(rid, th_s)
             if t:
                 th[rid] = _thermik_auswerten(t)
                 th[rid]["name"] = {"walensee": "MeteoSwiss Quinten", "achensee": "GeoSphere Achenkirch"}.get(rid, rid)
                 th[rid]["richtung"] = kompass(THERMIK_MESS[rid][3])
+                th[rid]["abdeckung"] = abd
         if th:
             ergebnis["thermik"] = th
     except OmLimit as e:
@@ -19439,15 +19545,27 @@ def thermik_drucken(e: dict) -> None:
                                                       if sw.get("sst_klima_tage") else ""))
         for name, x in sw["stationen"].items():
             print(f"  {name:18} {x['tage']:4} Tage · {x['ereignisse']:3} Seewind · Faustregel: {x['treffer']} Treffer, "
-                  f"{x['fehlalarm']} Fehlalarme, {x['verpasst']} verpasst (CSI {x['csi']:.2f})")
+                  f"{x['fehlalarm']} Fehlalarme, {x['verpasst']} verpasst (HSS {x['hss']:.2f})")
         for titel, x in (("Faustregel", s), ("bestes Raster", b)):
             q1, q2 = x["quote"]["1"], x["quote"]["2"]
-            print(f"  {titel:14} ab {x['dt_m']:g} K, Grundwind ≤ {x['grund']:g} kn: CSI {x['csi']:.2f} · "
+            print(f"  {titel:14} ab {x['dt_m']:g} K, Grundwind ≤ {x['grund']:g} kn: HSS {x['hss']:.2f} (CSI {x['csi']:.2f}) · "
                   f"„möglich“ kam an {_pz(q1[1], q1[0])} von {q1[0]} Tagen, „wahrscheinlich“ (ab {x['dt_w']:g} K) "
                   f"an {_pz(q2[1], q2[0])} von {q2[0]}")
         v = sw.get("vorschlag")
         print("  → übernommen: " + (f"ab {v['dt_m']:g} K, „wahrscheinlich“ ab {v['dt_w']:g} K, Grundwind ≤ {v['grund']:g} kn"
-                                    if v else "nichts – die Faustregel bleibt (nicht klar besser oder zu wenige Tage)"))
+                                    if v else f"nichts – die Faustregel bleibt (Übernahme erst ab HSS {HSS_MIN:g} und "
+                                              f"+{HSS_GEWINN:g} gegenüber der Faustregel)"))
+        print("  Diagnose – Messstufe: an allen Tagen / an Tagen mit „Seewind“ laut Faustregel (HSS)")
+        for k, t in SW_STUFEN:
+            x = sw["stufen"][k]
+            print(f"    {t:32} {_pz(*x['grund']):>5} / {_pz(*x['regel']):>5}  ({x['hss']:+.2f})")
+        print("  Diagnose – günstige Tage (sonnig, Grundwind ≤ 10 kn, nicht auflandig) je Temperaturunterschied:")
+        for lo, hi, n, a5, a8 in sw["dt_tab"]:
+            rng = (f"unter {hi} K" if lo < -50 else f"ab {lo} K" if hi > 50 else f"{lo}–{hi} K")
+            print(f"    {rng:10} {n:4} Tage · Seewind ≥ 5 kn {_pz(a5, n):>5} · ≥ 8 kn {_pz(a8, n):>5}")
+        ns = sw["nicht_sonnig"]
+        print(f"    zum Vergleich nicht sonnig, Grundwind ≤ 10 kn: {ns[0]} Tage · ≥ 5 kn {_pz(ns[1], ns[0])} · "
+              f"≥ 8 kn {_pz(ns[2], ns[0])}")
         vs = sw["verstaerkt"]
         if vs["tage"] and vs["kontrolle_tage"]:
             print(f"  Thermik verstärkt: an {vs['tage']} solchen Tagen Messung − Modell {vs['plus']:+.1f} kn, "
@@ -19455,15 +19573,29 @@ def thermik_drucken(e: dict) -> None:
                   f"→ Verstärkung etwa {vs['plus'] - vs['kontrolle_plus']:+.1f} kn")
         print()
     for rid, x in (e.get("thermik") or {}).items():
-        print(f"THERMIK {rid} · {x['name']} · {x['tage']} Tage, {x['w8']} mit ≥ 3 h {x['richtung']} ≥ 8 kn, "
+        abd = " · ".join(f"{j}: {n}/{s} Tage gemessen" for j, n, s in x.get("abdeckung") or [])
+        print(f"THERMIK {rid} · {x['name']} · {x['tage']} Tage ({abd}), {x['w8']} mit ≥ 3 h {x['richtung']} ≥ 8 kn, "
               f"{x['w12']} mit ≥ 12 kn (12–18 Uhr)")
-        for kl, (n, a8, a12) in x["klassen"].items():
-            print(f"  {IND_KLASSE_TEXT[kl]:9} {n:4} Tage · ≥ 8 kn an {_pz(a8, n):>5} · ≥ 12 kn an {_pz(a12, n):>5}")
+        print(f"  {'Klasse':9} {'Tage':>5} · " + " · ".join(f"{t:>16}" for _, t in TH_STUFEN)
+              + "   Windrose ≥ 5 kn (" + " ".join(SEKTOREN8) + ")")
+        for kl, dg in x["diagnose"].items():
+            n = dg["n"]
+            ges = sum(dg["rose"]) or 1
+            print(f"  {IND_KLASSE_TEXT[kl]:9} {n:5} · " + " · ".join(f"{_pz(dg[s], n):>16}" for s, _ in TH_STUFEN)
+                  + "   " + " ".join(f"{100 * r / ges:.0f}" for r in dg["rose"]))
+        print("  HSS der Faustregel („möglich“ oder besser) je Messstufe: "
+              + ", ".join(f"{t} {x['hss_stufen'][s]:+.2f}" for s, t in TH_STUFEN))
         v = x.get("vorschlag")
-        print(f"  Schwellen Faustregel {x['standard'][0]:.2f}/{x['standard'][1]:.2f} (CSI {x['csi_standard']:.2f})"
-              + (f" → übernommen {v[0]:.2f}/{v[1]:.2f} (CSI {x['csi_vorschlag']:.2f})" if v else " – bleiben")
+        print(f"  Schwellen Faustregel {x['standard'][0]:.2f}/{x['standard'][1]:.2f}"
+              + (f" → übernommen {v[0]:.2f}/{v[1]:.2f} (HSS {x['hss_standard']:.2f} → {x['hss_vorschlag']:.2f})" if v
+                 else " – bleiben")
               + ("" if x["trennt"] else " · Achtung: der Score trennt hier kaum zwischen Wind- und Flautetagen"))
         print()
+
+
+def _th_vorschlag_gilt() -> bool:
+    """Vorschläge aus 1.1 (Übernahme nach CSI-Gewinn, zu lasch) werden nicht angewandt."""
+    return str(THERMIK_PRUEFUNG.get("fassung", "")) not in ("", "1.1")
 
 
 def thermik_pruefung_laden() -> dict:
@@ -19473,7 +19605,7 @@ def thermik_pruefung_laden() -> dict:
         THERMIK_PRUEFUNG = json.loads(THERMIK_PRUEF_DATEI.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         THERMIK_PRUEFUNG = {}
-    v = (THERMIK_PRUEFUNG.get("seewind") or {}).get("vorschlag")
+    v = (THERMIK_PRUEFUNG.get("seewind") or {}).get("vorschlag") if _th_vorschlag_gilt() else None
     try:
         if v and 2 <= v["dt_m"] <= 10 and v["dt_m"] < v["dt_w"] and 4 <= v["grund"] <= 16:
             SEEWIND_DT_MOEGLICH, SEEWIND_DT_WAHRSCH, SEEWIND_GRUND_MAX = (float(v["dt_m"]), float(v["dt_w"]),
@@ -19485,7 +19617,7 @@ def thermik_pruefung_laden() -> dict:
 
 def thermik_schwellen(rid: str) -> Tuple[float, float]:
     """Score-Schwellen „möglich“/„gut“: geprüft, wenn vorhanden und plausibel, sonst 0,35/0,6."""
-    v = ((THERMIK_PRUEFUNG.get("thermik") or {}).get(rid) or {}).get("vorschlag")
+    v = ((THERMIK_PRUEFUNG.get("thermik") or {}).get(rid) or {}).get("vorschlag") if _th_vorschlag_gilt() else None
     try:
         if v and 0.1 <= v[0] < v[1] <= 0.95:
             return float(v[0]), float(v[1])
@@ -19495,27 +19627,46 @@ def thermik_schwellen(rid: str) -> Tuple[float, float]:
 
 
 def thermik_gemessen_text(rid: str, klasse: str) -> str:
-    """„Gemessen 2025–2026: an solchen Tagen in X % ab 8 kn aus der Thermikrichtung …“; "" ohne Prüfung."""
+    """„Gemessen 2025–2026: an solchen Tagen in X % ab 8 kn …, bei „kaum“ Y %“; "" ohne Prüfung. Die Klassen passen
+    zu den Schwellen, die gerade gelten (übernommen oder Faustregel)."""
     e = (THERMIK_PRUEFUNG.get("thermik") or {}).get(rid) or {}
-    k = (e.get("klassen") or {}).get(klasse)
+    kl = e.get("klassen") if (_th_vorschlag_gilt() and e.get("vorschlag")) else (e.get("klassen_standard") or e.get("klassen"))
+    k, k0 = (kl or {}).get(klasse), (kl or {}).get("kaum")
     if klasse == "kaum" or e.get("tage", 0) < THERMIK_MIN_TAGE or not k or k[0] < 5:
         return ""
+    sonst = f" (bei „kaum“ {100 * k0[1] / k0[0]:.0f} %)" if k0 and k0[0] >= 5 else ""
     return (f"Gemessen {THERMIK_PRUEFUNG.get('jahre', '')}: an solchen Tagen in {100 * k[1] / k[0]:.0f} % ab 8 kn aus "
-            f"der Thermikrichtung, in {100 * k[2] / k[0]:.0f} % ab 12 kn – {e.get('name', '')}")
+            f"der Thermikrichtung{sonst}, in {100 * k[2] / k[0]:.0f} % ab 12 kn – {e.get('name', '')}")
+
+
+def _sw_verst_plus() -> Optional[float]:
+    """Gemessene Verstärkung an „Thermik verstärkt“-Tagen gegenüber anderen auflandigen Tagen (kn); None = ungeprüft."""
+    v = (THERMIK_PRUEFUNG.get("seewind") or {}).get("verstaerkt") or {}
+    if (v.get("tage") or 0) < 20 or (v.get("kontrolle_tage") or 0) < 20:
+        return None
+    return v["plus"] - v["kontrolle_plus"]
+
+
+def seewind_mehr_belegt() -> bool:
+    """„eher ein paar kn mehr“ / „kann stärker kommen“ nur, solange die Prüfung es nicht widerlegt (unter 1,5 kn)."""
+    d = _sw_verst_plus()
+    return d is None or d >= 1.5
 
 
 def seewind_verst_text() -> str:
-    """„ · geprüft: an solchen Tagen etwa +2 kn mehr als die Modelle“ – Verstärkung gegen andere auflandige Tage."""
-    v = (THERMIK_PRUEFUNG.get("seewind") or {}).get("verstaerkt") or {}
-    if (v.get("tage") or 0) < 10 or (v.get("kontrolle_tage") or 0) < 10:
+    """„ · geprüft 2025–2026: an solchen Tagen +0,5 kn gegenüber den Modellen“."""
+    d = _sw_verst_plus()
+    if d is None:
         return ""
-    d = v["plus"] - v["kontrolle_plus"]
-    return f" · geprüft {THERMIK_PRUEFUNG.get('jahre', '')}: an solchen Tagen {d:+.0f} kn gegenüber den Modellen"
+    return (f" · geprüft {THERMIK_PRUEFUNG.get('jahre', '')}: an solchen Tagen {d:+.1f} kn gegenüber den Modellen"
+            .replace(".", ","))
 
 
 def seewind_quote_text(stufe: int) -> str:
     """„Geprüft: kam an X % solcher Tage“ für den Seewind (Stufe 1/2); "" ohne Prüfung oder zu wenige Tage."""
-    q = (((THERMIK_PRUEFUNG.get("seewind") or {}).get("angewandt") or {}).get("quote") or {}).get(str(stufe))
+    sw = THERMIK_PRUEFUNG.get("seewind") or {}
+    q = (((sw.get("angewandt") if (_th_vorschlag_gilt() and sw.get("vorschlag")) else sw.get("standard")) or {})
+         .get("quote") or {}).get(str(stufe))
     if not q or q[0] < 8:
         return ""
     return f"geprüft {THERMIK_PRUEFUNG.get('jahre', '')}: kam an {100 * q[1] / q[0]:.0f} % solcher Tage"
