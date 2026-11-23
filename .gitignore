@@ -1,0 +1,8 @@
+# Windfenster – nur Code und Doku gehören ins Repository.
+# Alles andere im Ordner (Zugangsdaten, Archive, Zwischenspeicher, erzeugte Seiten, Logbuch, Polar …)
+# bleibt auf dem Pi. Deshalb: erst alles ignorieren, dann gezielt freigeben.
+/*
+!/.gitignore
+!/README.md
+!/CHANGELOG.md
+!/windsurf_spots.py
