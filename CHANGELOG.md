@@ -1,5 +1,11 @@
 # Änderungen
 
+## 1.1.2 – 23.11.2026
+
+- Thermik-Prüfung Achensee: Das TAWES-Archiv von GeoSphere reicht nur wenige Monate zurück (Achenkirch 2025 leer,
+  2026 nur 39 Tage). Fehlt mehr als die Hälfte, holt die Prüfung jetzt den Klimadatensatz `klima-v2-10min`
+  derselben Station (lange Historie)
+
 ## 1.1.1 – 23.11.2026
 
 Korrektur der Thermik-Prüfung nach dem ersten echten Lauf.

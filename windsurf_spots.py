@@ -376,7 +376,7 @@ OEFFENTLICH_TITEL = "Windfenster"           # Name seit 01.11.2026 (David)
 MARKE = "Windfenster"
 # Versionsnummer (23.11.2026, Stand des Livegangs + Umbau = 1.0). Kleine Korrekturen 1.0.1, neue Funktionen 1.1,
 # große Umbauten 2.0. Jede Version steht in CHANGELOG.md und als Git-Tag (vX.Y[.Z]).
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 MARKE_UNTERTITEL = "Windvorhersage für Windsurfen, Kiten & Wingen"
 MARKE_LOGO = ('<svg viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><defs><linearGradient id="wf-g" '
               'x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5fd0ea"/><stop offset="1" stop-color="#1d5fc4"/>'
@@ -19185,6 +19185,11 @@ def _th_messreihe(quelle: str, lat: float, lon: float, von: date, bis: date
         else:
             q.bereich(von, bis)
         roh = {t: v for t, v in q.reihe.items() if a <= t < b}
+        if quelle.startswith("geosphere:") and len(roh) < soll / 2:
+            # TAWES-Archiv reicht nur wenige Monate zurück (1.1.1: Achenkirch 2025 leer, 2026 ab August) →
+            # Klimadatensatz klima-v2-10min derselben Station, gleiche Parameter in Kleinschreibung (1.1.2)
+            roh.update({t: v for t, v in _geosphere_klima(quelle.split(":", 1)[1], von, bis).items()
+                        if a <= t < b and t not in roh})
     else:
         roh = hole_messreihe(lat, lon, a, b)[0]
     reihe = {t: (v[0], v[2]) for t, v in roh.items() if v[0] is not None}
@@ -19198,6 +19203,42 @@ def _th_messreihe(quelle: str, lat: float, lon: float, von: date, bis: date
         except OSError:
             pass
     return reihe
+
+
+def _geosphere_klima(station: str, von: date, bis: date
+                     ) -> Dict[datetime, Tuple[float, Optional[float], Optional[float]]]:
+    """GeoSphere klima-v2-10min (lange Historie, CC BY 4.0): Wert zur vollen Stunde, Ortszeit, kn."""
+    aus: Dict[datetime, Tuple[float, Optional[float], Optional[float]]] = {}
+    fehler = []
+    for x, y in _th_stuecke(von, bis, 30):
+        print(f"\r\033[2K  GeoSphere Klima {station}: {x:%d.%m.%Y} – {y:%d.%m.%Y} …", end="", file=sys.stderr, flush=True)
+        url = (f"{GEOSPHERE_API}/station/historical/klima-v2-10min?parameters=ffam,ffx,dd&station_ids={station}"
+               f"&start={x - timedelta(days=1):%Y-%m-%d}T22:00&end={y:%Y-%m-%d}T23:50&output_format=geojson")
+        try:
+            d = json.loads(_karte_get(url, 90, versuche=3).decode("utf-8", "replace"))
+        except (RuntimeError, ValueError) as e:
+            fehler.append(f"{x:%d.%m.}–{y:%d.%m.%Y} ({e})")
+            continue
+        ts = d.get("timestamps") or []
+        for ft in d.get("features") or []:
+            par = (ft.get("properties") or {}).get("parameters") or {}
+            reihen = [((par.get(k) or par.get(k.upper()) or {}).get("data") or []) for k in ("ffam", "ffx", "dd")]
+            for i, t_txt in enumerate(ts):
+                try:
+                    t = datetime.fromisoformat(t_txt).astimezone(timezone.utc).replace(tzinfo=None)
+                except ValueError:
+                    continue
+                if t.minute:
+                    continue
+                v = [r[i] if i < len(r) else None for r in reihen]
+                if v[0] is None or v[0] < 0:
+                    continue
+                aus[_utc_zu_berlin(t)] = (v[0] * 1.943844, None if v[1] is None else v[1] * 1.943844, v[2])
+    print("\r\033[2K", end="", file=sys.stderr, flush=True)
+    if fehler:
+        print(f"  Hinweis: GeoSphere klima-v2-10min {station} – {len(fehler)} Abschnitt(e) ohne Daten: "
+              f"{'; '.join(fehler[:2])}" + (" …" if len(fehler) > 2 else ""))
+    return aus
 
 
 def _nach_tag(reihe: Dict[datetime, tuple]) -> Dict[date, Dict[int, tuple]]:
