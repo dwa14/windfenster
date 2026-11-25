@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.3.3 – 25.11.2026
+
+- Saison aus Messungen erst ab 3 brauchbaren Jahren. Tarifa (nur 2021 vollständig) und Viana do Castelo (2021–2022
+  mit 76 % der Stunden, aber überall 0 Gleittage – die Altdaten taugen offenbar nicht) fallen damit heraus
+
 ## 1.3.2 – 25.11.2026
 
 Nach dem ersten echten `--klima-messung`-Lauf:

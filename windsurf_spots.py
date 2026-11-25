@@ -377,7 +377,7 @@ OEFFENTLICH_TITEL = "Windfenster"           # Name seit 01.11.2026 (David)
 MARKE = "Windfenster"
 # Versionsnummer (23.11.2026, Stand des Livegangs + Umbau = 1.0). Kleine Korrekturen 1.0.1, neue Funktionen 1.1,
 # große Umbauten 2.0. Jede Version steht in CHANGELOG.md und als Git-Tag (vX.Y[.Z]).
-VERSION = "1.3.2"
+VERSION = "1.3.3"
 MARKE_UNTERTITEL = "Windvorhersage für Windsurfen, Kiten & Wingen"
 MARKE_LOGO = ('<svg viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><defs><linearGradient id="wf-g" '
               'x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5fd0ea"/><stop offset="1" stop-color="#1d5fc4"/>'
@@ -19847,6 +19847,9 @@ KLIMA_MESS_MIN_TAGE = 20          # Tage mit Messung je Monat (über alle Jahre)
 # 1.3.2: mindestens die Hälfte der Stunden eines Jahres – Viana do Castelo lieferte über GHCNh offenbar keine
 # lückenlosen Stundenwerte (überall 0 Gleittage, weil nie MIN_STUNDEN am Stück zusammenkamen)
 KLIMA_MESS_MIN_ANTEIL = 0.5
+# 1.3.3: ein oder zwei Jahre sind keine Saison (Tarifa: nur 2021 vollständig; Viana do Castelo: 2021–2022 mit 76 %
+# der Stunden, aber überall 0 Gleittage – Altdaten offenbar unbrauchbar, Station liefert erst ab 2026 richtig)
+KLIMA_MESS_MIN_JAHRE = 3
 KLIMA_MESS_OHNE_QUELLE = ("trentino:",)   # Meteotrentino: Lizenz der Historie ungeklärt
 KLIMA_MESSUNG: dict = {}
 
@@ -19972,6 +19975,9 @@ def klima_messung(args) -> None:
             if fehler_jahre == len(jahre):
                 behalten.add(name)              # nur Abrufe gescheitert → alte Werte behalten
             continue
+        if len(mit) < min(KLIMA_MESS_MIN_JAHRE, len(jahre)):
+            print(f"  {name}: nur {len(mit)} brauchbare(s) Jahr(e) ({', '.join(map(str, mit))}) – nicht angezeigt")
+            continue
         stationen[name] = {"revier": rid, "quelle": quelle, "jahre": mit, "abdeckung": round(stunden / soll_ges, 3),
                            **summe}
         g_akt = summe["gleit"][f"{AKT_MIN_KN:g}"]
@@ -20028,7 +20034,8 @@ def klima_mess_html(rid: str) -> str:
     km = KLIMA_MESSUNG.get("stationen") or {}
     zeilen = []
     for name, x in km.items():
-        if x.get("revier") != rid or name in KLIMA_CHECK_OHNE or x.get("abdeckung", 0) < KLIMA_MESS_MIN_ANTEIL:
+        if (x.get("revier") != rid or name in KLIMA_CHECK_OHNE or x.get("abdeckung", 0) < KLIMA_MESS_MIN_ANTEIL
+                or len(x.get("jahre") or []) < KLIMA_MESS_MIN_JAHRE):
             continue
         g = (x.get("gleit") or {}).get(f"{AKT_MIN_KN:g}")
         if not g:
