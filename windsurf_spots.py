@@ -62,6 +62,7 @@ MIN_KN = 15            # Mittelwind, ab dem eine Stunde zählt (6,1er gleitet be
 MAX_KN = 35            # darüber keine Empfehlung
 MIN_STUNDEN = 2        # kürzestes sinnvolles Zeitfenster
 WELLE_WARN_M = 1.5     # ab dieser Wellenhöhe draußen: Hinweis "eher Stufe 3+"
+SANDBANK_WELLE_M = 1.0  # 1.3.1: Spots mit Sandbank (stark=…) – ab dieser Modell-Wellenhöhe „Sandbank: Welle X m / Y s“
 SESSION_STUNDEN = 2    # typische Session-Länge: die Spitze ist der beste Block dieser Länge
 TOP_N = 3              # Spots pro Tag
 DEINE_STUFE = 5        # seit 31.10.2026 alle Stufen (jeder entscheidet selbst); Stufe bleibt als Information
@@ -376,7 +377,7 @@ OEFFENTLICH_TITEL = "Windfenster"           # Name seit 01.11.2026 (David)
 MARKE = "Windfenster"
 # Versionsnummer (23.11.2026, Stand des Livegangs + Umbau = 1.0). Kleine Korrekturen 1.0.1, neue Funktionen 1.1,
 # große Umbauten 2.0. Jede Version steht in CHANGELOG.md und als Git-Tag (vX.Y[.Z]).
-VERSION = "1.3"
+VERSION = "1.3.1"
 MARKE_UNTERTITEL = "Windvorhersage für Windsurfen, Kiten & Wingen"
 MARKE_LOGO = ('<svg viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><defs><linearGradient id="wf-g" '
               'x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5fd0ea"/><stop offset="1" stop-color="#1d5fc4"/>'
@@ -632,7 +633,7 @@ SPOTS: List[Spot] = [
            ("NNO", "NO", 3, "Welle"),
            ("ONO", "O", 2, "Welle")),
          stufe=2,
-         stark=(22, "kräftiger Wind: draußen auf der Sandbank logohoch – innen bleiben"),
+         stark=(22, "Sandbank"),        # 1.3.1: nur noch Kennzeichen „Spot mit Sandbank“ – Hinweis aus der Wellenhöhe
          hinweise=["Mole 24–26 (nur Windsurfer)", "innen Puffer vor der Sandbank"]),
     Spot("Laboe", 54.420, 10.220, 35,
          R(("NNW", "NNW", 2, "Flachwasser"),
@@ -2040,8 +2041,12 @@ def bewerte(spot: Spot, d: OrtDaten, tag: date, args, jetzt: datetime,
         for n in z[6]:
             if n not in warnungen:
                 warnungen.append(n)
-    if OEFFENTLICH and spot.stark and max(z[5] for z in best) >= spot.stark[0] and art.startswith("Welle"):
-        warnungen.append(spot.stark[1])
+    # 1.3.1: Sandbank-Hinweis aus der Wellenhöhe des Modells statt „logohoch ab 22 kn Wind“ (David, 25.11.2026:
+    # passte nicht und sagt nichts Messbares)
+    sandbank = bool(spot.stark and welle_h is not None and welle_h >= SANDBANK_WELLE_M and art.startswith("Welle"))
+    if sandbank:
+        warnungen.append(f"Welle an der Sandbank ~{welle_h:.1f} m".replace(".", ",")
+                         + (f" / {welle_p:.0f} s" if welle_p else ""))
     abd = ABDECKUNG.get(spot.name)
     if abd and sum(kompass(st.wd) in abd[0] for st in stunden) >= len(stunden) / 2:
         score *= 0.85
@@ -2077,7 +2082,7 @@ def bewerte(spot: Spot, d: OrtDaten, tag: date, args, jetzt: datetime,
             pw = pegel_im_fenster(spot, stunden[0].t, stunden[-1].t + timedelta(hours=1), jetzt)
             if pw and "unsicher" in pw[2]:
                 warnungen.append(f"W/SW-Lage: Modell zeigt nur {pw[1]:+.0f} cm, unterschätzt Niedrigwasser eher")
-    if welle_h is not None and welle_h >= WELLE_WARN_M and art.startswith("Welle"):
+    if welle_h is not None and welle_h >= WELLE_WARN_M and art.startswith("Welle") and not sandbank:
         # 15.11.2026: Höhe und Periode statt „groß“ – was das heißt, entscheidet jeder selbst
         warnungen.append(f"Welle draußen {welle_h:.1f} m".replace(".", ",")
                          + (f" / {welle_p:.0f} s" if welle_p else ""))
@@ -3673,6 +3678,9 @@ def warn_kurz(w: str) -> Optional[Tuple[str, bool]]:
     m = re.match(r"Welle draußen (\d+,\d m(?: / \d+ s)?)", w)
     if m:
         return f"Welle {m.group(1)}", True
+    m = re.match(r"Welle an der Sandbank ~(\d+,\d m(?: / \d+ s)?)", w)
+    if m:
+        return f"Sandbank: Welle {m.group(1)}", True
     regeln = [("Unwetterwarnung", "Unwetter (DWD)", True), ("Gewitterwarnung", "Gewitter (DWD)", True),
               ("Sturmwarnung", "Sturm (DWD)", True), ("DWD-Warnung", "DWD-Warnung", True),
               ("ablandig – Abdrift", "ablandig", True), ("seitlicher Wind, kein", "seitlich, kein Stehbereich", True),
@@ -7698,6 +7706,9 @@ EN: Dict[str, str] = {
     "Welle draußen § m / § s": "waves outside § m / § s", "Welle draußen § m": "waves outside § m",
     "Welle § m / § s": "waves § m / § s", "Welle § m": "waves § m", "⚠ Welle § m / § s": "⚠ waves § m / § s",
     "⚠ Welle § m": "⚠ waves § m", "Sandbank logohoch": "sandbar head-high", "⚠ Sandbank logohoch": "⚠ sandbar head-high",
+    "Sandbank: Welle § m / § s": "sandbar: waves § m / § s", "Sandbank: Welle § m": "sandbar: waves § m",
+    "⚠ Sandbank: Welle § m / § s": "⚠ sandbar: waves § m / § s", "⚠ Sandbank: Welle § m": "⚠ sandbar: waves § m",
+    "Welle an der Sandbank ~§ m / § s": "waves at the sandbar ~§ m / § s", "Welle an der Sandbank ~§ m": "waves at the sandbar ~§ m",
     "Wo die Messstationen eines Reviers genug Stunden liefern, zählt nicht mehr jedes Modell gleich: Für jedes Modell und jeden Vorlauf ist gemessen, wie viel Wind wirklich kommt, wenn es eine bestimmte Stärke ansagt, und wie stark es dabei streut. Daraus gibt jedes Modell eine eigene Wahrscheinlichkeit; genaue Modelle zählen mehr, ungenaue weniger. Die eng verwandten Modelle MET Nordic, DMI und KNMI zählen zusammen nicht dreifach. Das Ensemble wird beigemischt – am ersten Tag wenig, ab Tag 4 überwiegend, weil die fein aufgelösten Modelle nur etwa 2,5 Tage vorausrechnen.":
         "Where an area's measuring stations provide enough hours, the models no longer count equally: for each model and lead time it is measured how much wind actually arrives when it forecasts a given strength, and how much it scatters. From this each model gives its own probability; accurate models count more, inaccurate ones less. The closely related models MET Nordic, DMI and KNMI do not count three times together. The ensemble is blended in – little on day 1, mostly from day 4, because the high-resolution models only forecast about 2.5 days ahead.",
     "§ % Gleitwind – nach der gemessenen Treffsicherheit der Modelle und dem Ensemble": "§ % planing wind – based on the measured accuracy of the models and the ensemble",

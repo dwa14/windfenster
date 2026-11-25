@@ -1,5 +1,11 @@
 # Änderungen
 
+## 1.3.1 – 25.11.2026
+
+- Sandbank-Hinweis quantitativ: statt „Sandbank logohoch“ (ausgelöst allein durch ≥ 22 kn Wind im Fenster) jetzt
+  „Sandbank: Welle 1,2 m / 5 s“ aus der Modell-Wellenhöhe (Mittel im Fenster) und -periode, ab 1,0 m, an Spots mit
+  Sandbank (derzeit Heidkate); ersetzt dort den allgemeinen Chip „Welle … m“. Ohne Wellendaten kein Sandbank-Hinweis
+
 ## 1.3 – 23.11.2026
 
 Zwei neue Abschnitte, beide aus Messungen.
