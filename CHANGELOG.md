@@ -1,5 +1,14 @@
 # Änderungen
 
+## 1.3.2 – 25.11.2026
+
+Nach dem ersten echten `--klima-messung`-Lauf:
+- Ein Messjahr zählt nur mit mindestens der Hälfte der Stunden. Viana do Castelo zeigte überall 0 Gleittage –
+  offenbar keine lückenlosen Stundenwerte, sodass nie genug Stunden am Stück zusammenkamen. Die Ausgabe nennt jetzt
+  den Anteil der Stunden je Station und ausgelassene Jahre; ausgelassene Stationen verschwinden auch aus der Datei
+- „Talwind“-Zeilen heißen „Nachmittags W/N ab 8/5 kn“: Die Messung trennt thermischen Wind nicht von Wetterlagen
+  (im Winter sind das Westwind- bzw. Nordwindlagen)
+
 ## 1.3.1 – 25.11.2026
 
 - Sandbank-Hinweis quantitativ: statt „Sandbank logohoch“ (ausgelöst allein durch ≥ 22 kn Wind im Fenster) jetzt

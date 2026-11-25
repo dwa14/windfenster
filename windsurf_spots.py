@@ -377,7 +377,7 @@ OEFFENTLICH_TITEL = "Windfenster"           # Name seit 01.11.2026 (David)
 MARKE = "Windfenster"
 # Versionsnummer (23.11.2026, Stand des Livegangs + Umbau = 1.0). Kleine Korrekturen 1.0.1, neue Funktionen 1.1,
 # große Umbauten 2.0. Jede Version steht in CHANGELOG.md und als Git-Tag (vX.Y[.Z]).
-VERSION = "1.3.1"
+VERSION = "1.3.2"
 MARKE_UNTERTITEL = "Windvorhersage für Windsurfen, Kiten & Wingen"
 MARKE_LOGO = ('<svg viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><defs><linearGradient id="wf-g" '
               'x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5fd0ea"/><stop offset="1" stop-color="#1d5fc4"/>'
@@ -8225,9 +8225,10 @@ EN: Dict[str, str] = {
     "Wie gut lag die Vorhersage hier?": "How good was the forecast here?",
     "Gemessen an den Stationen": "Measured at the stations",
     "Talwind § ab § kn": "Valley wind § from § kn",
+    "Nachmittags § ab § kn": "Afternoons § from § kn",
     "Seewind ab § kn": "Sea breeze from § kn",
-    "Ø Tage pro Monat an den Messstationen selbst, aus §–§: Gleitwind = mindestens § Stunden am Stück ab § kn bei Tageslicht, ohne Richtung. Talwind = §–§ Uhr mindestens § Stunden aus der Thermikrichtung. Seewind = nachmittags mindestens § Stunden auflandig, morgens noch nicht (März–September). Die Stationen stehen meist an Land und messen dort oft weniger als auf dem Wasser.":
-        "Average days per month at the measuring stations themselves, from §–§: planing wind = at least § consecutive hours from § kn in daylight, direction ignored. Valley wind = §–§ h at least § hours from the thermal direction. Sea breeze = at least § hours onshore in the afternoon, not yet in the morning (March–September). The stations are mostly on land and often measure less there than on the water.",
+    "Ø Tage pro Monat an den Messstationen selbst, aus §–§: Gleitwind = mindestens § Stunden am Stück ab § kn bei Tageslicht, ohne Richtung. Nachmittags = §–§ Uhr mindestens § Stunden aus der Richtung des Talwinds – thermisch oder Wetterlage, das trennt die Messung nicht. Seewind = nachmittags mindestens § Stunden auflandig, morgens noch nicht (März–September). Die Stationen stehen meist an Land und messen dort oft weniger als auf dem Wasser.":
+        "Average days per month at the measuring stations themselves, from §–§: planing wind = at least § consecutive hours from § kn in daylight, direction ignored. Afternoons = §–§ h at least § hours from the valley-wind direction – thermal or synoptic, the measurement cannot tell them apart. Sea breeze = at least § hours onshore in the afternoon, not yet in the morning (March–September). The stations are mostly on land and often measure less there than on the water.",
     "angesagt und gekommen": "forecast and came", "angesagt, kam nicht": "forecast, did not come",
     "kam, war nicht angesagt": "came, not forecast", "kein Gleitwind, richtig": "no planing wind, correct",
     "Zwei bis drei Tage vorher angesagt: § von § gekommen.": "Forecast two to three days ahead: § of § came.",
@@ -19843,6 +19844,9 @@ KLIMA_MESS_DATEI = Path(__file__).resolve().parent / "klima_messung.json"
 KLIMA_MESS_CACHE = Path(__file__).resolve().parent / "klima_messung_cache"
 KLIMA_MESS_JAHRE = 5
 KLIMA_MESS_MIN_TAGE = 20          # Tage mit Messung je Monat (über alle Jahre), sonst „–“
+# 1.3.2: mindestens die Hälfte der Stunden eines Jahres – Viana do Castelo lieferte über GHCNh offenbar keine
+# lückenlosen Stundenwerte (überall 0 Gleittage, weil nie MIN_STUNDEN am Stück zusammenkamen)
+KLIMA_MESS_MIN_ANTEIL = 0.5
 KLIMA_MESS_OHNE_QUELLE = ("trentino:",)   # Meteotrentino: Lizenz der Historie ungeklärt
 KLIMA_MESSUNG: dict = {}
 
@@ -19930,12 +19934,16 @@ def klima_messung(args) -> None:
     except (OSError, ValueError):
         alt = {}
     stationen: dict = {}
+    behalten: set = set()
     for name, lat, lon, quelle, rid in stationen_liste():
         if name in KLIMA_CHECK_OHNE or quelle.startswith(KLIMA_MESS_OHNE_QUELLE):
             continue
         sektor = THERMIK_MESS[rid][3:5] if rid in THERMIK_MESS else None
         summe: dict = {}
         mit = []
+        luecken: List[str] = []
+        stunden = soll_ges = 0
+        fehler_jahre = 0
         for j in jahre:
             print(f"\r\033[2K  {name} {j} …", end="", file=sys.stderr, flush=True)
             try:
@@ -19945,31 +19953,44 @@ def klima_messung(args) -> None:
             except Exception as e:                 # eine Station/ein Jahr darf scheitern
                 print("\r\033[2K", end="", file=sys.stderr, flush=True)
                 print(f"  Hinweis: {name} {j}: {str(e)[:120]}")
+                fehler_jahre += 1
                 continue
-            if len(reihe) < 24 * 30:
+            soll = (date(j + 1, 1, 1) - date(j, 1, 1)).days * 24
+            if len(reihe) < KLIMA_MESS_MIN_ANTEIL * soll:
+                if reihe:
+                    luecken.append(f"{j}: {100 * len(reihe) / soll:.0f} %")
                 continue
             summe = _km_addieren(summe, _km_auswerten(reihe, lat, lon, sektor))
             mit.append(j)
+            stunden += len(reihe)
+            soll_ges += soll
         print("\r\033[2K", end="", file=sys.stderr, flush=True)
+        if luecken:
+            print(f"  {name}: Jahre mit zu wenigen Stundenwerten ausgelassen ({', '.join(luecken)} der Stunden)")
         if not mit:
             print(f"  {name}: keine Messjahre")
+            if fehler_jahre == len(jahre):
+                behalten.add(name)              # nur Abrufe gescheitert → alte Werte behalten
             continue
-        stationen[name] = {"revier": rid, "quelle": quelle, "jahre": mit, **summe}
+        stationen[name] = {"revier": rid, "quelle": quelle, "jahre": mit, "abdeckung": round(stunden / soll_ges, 3),
+                           **summe}
         g_akt = summe["gleit"][f"{AKT_MIN_KN:g}"]
         zeile = " ".join(f"{'–' if summe['tage'][m] < KLIMA_MESS_MIN_TAGE else f'{30 * g_akt[m] / summe['tage'][m]:.0f}':>3}"
                          for m in range(12))
-        print(f"  {name[:28]:<28} {mit[0]}–{mit[-1]} ({len(mit)} J.) · Gleittage ≥ {AKT_MIN_KN:.0f} kn je Monat: {zeile}")
+        print(f"  {name[:28]:<28} {mit[0]}–{mit[-1]} ({len(mit)} J., {100 * stunden / soll_ges:.0f} % der Stunden) · "
+              f"Gleittage ≥ {AKT_MIN_KN:.0f} kn je Monat: {zeile}")
         if "talwind" in summe:
             tw = summe["talwind"]
-            print(f"  {'':<28} Talwind ≥ 8 kn ({kompass(sektor[0])}, 12–18 Uhr ≥ 3 h): " + " ".join(
+            print(f"  {'':<28} nachmittags {kompass(sektor[0])} ≥ 8 kn (12–18 Uhr ≥ 3 h): " + " ".join(
                 f"{'–' if tw['tage'][m] < KLIMA_MESS_MIN_TAGE else f'{30 * tw['w8'][m] / tw['tage'][m]:.0f}':>3}"
                 for m in range(12)))
     if not stationen:
         print("Keine Station mit Messjahren – nichts geschrieben.")
         return
     alt_st = alt.get("stationen") or {}
-    for n, v in alt_st.items():                    # Stationen, die diesmal scheiterten, behalten
-        stationen.setdefault(n, v)
+    for n, v in alt_st.items():                    # Stationen, deren Abrufe diesmal scheiterten, behalten
+        if n in behalten:
+            stationen.setdefault(n, v)
     KLIMA_MESS_DATEI.write_text(json.dumps({"erstellt": datetime.now().isoformat(timespec="minutes"),
                                             "jahre": f"{jahre[0]}–{jahre[-1]}", "min_stunden": MIN_STUNDEN,
                                             "stationen": stationen}, ensure_ascii=False), encoding="utf-8")
@@ -20007,7 +20028,7 @@ def klima_mess_html(rid: str) -> str:
     km = KLIMA_MESSUNG.get("stationen") or {}
     zeilen = []
     for name, x in km.items():
-        if x.get("revier") != rid or name in KLIMA_CHECK_OHNE:
+        if x.get("revier") != rid or name in KLIMA_CHECK_OHNE or x.get("abdeckung", 0) < KLIMA_MESS_MIN_ANTEIL:
             continue
         g = (x.get("gleit") or {}).get(f"{AKT_MIN_KN:g}")
         if not g:
@@ -20019,7 +20040,7 @@ def klima_mess_html(rid: str) -> str:
         if tw:
             richt = kompass(THERMIK_MESS[rid][3]) if rid in THERMIK_MESS else ""
             for k, t in (("w8", "ab 8 kn"), ("w5", "ab 5 kn")):
-                zeilen.append(f'<tr class="km-tw"><th class="rn">Talwind {richt} {t}</th>'
+                zeilen.append(f'<tr class="km-tw"><th class="rn">Nachmittags {richt} {t}</th>'
                               f'{_km_zellen(_km_je_monat(tw[k], tw["tage"]), 30.0)}</tr>')
     # Seewind aus der Thermik-Prüfung (Uferstationen, März–September)
     sw_mon = ((THERMIK_PRUEFUNG.get("seewind") or {}).get("monate") or {})
@@ -20035,8 +20056,9 @@ def klima_mess_html(rid: str) -> str:
         return ""
     kopf = "".join(f"<th>{m[0]}</th>" for m in MONATE)
     erkl = (f"Ø Tage pro Monat an den Messstationen selbst, aus {KLIMA_MESSUNG.get('jahre', '')}: Gleitwind = mindestens "
-            f"{MIN_STUNDEN} Stunden am Stück ab {AKT_MIN_KN:.0f} kn bei Tageslicht, ohne Richtung. Talwind = 12–18 Uhr "
-            "mindestens 3 Stunden aus der Thermikrichtung. Seewind = nachmittags mindestens 3 Stunden auflandig, morgens "
+            f"{MIN_STUNDEN} Stunden am Stück ab {AKT_MIN_KN:.0f} kn bei Tageslicht, ohne Richtung. Nachmittags = 12–18 Uhr "
+            "mindestens 3 Stunden aus der Richtung des Talwinds – thermisch oder Wetterlage, das trennt die Messung nicht. "
+            "Seewind = nachmittags mindestens 3 Stunden auflandig, morgens "
             "noch nicht (März–September). Die Stationen stehen meist an Land und messen dort oft weniger als auf dem Wasser.")
     return (f'<div class="km-box"><h3>Gemessen an den Stationen{info_knopf(erkl)}</h3>'
             f'<div class="kartei hm-wrap"><table class="reise-t klima-t"><tr><th></th>{kopf}</tr>{"".join(zeilen)}'
